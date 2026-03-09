@@ -6,6 +6,7 @@
 @endphp
 
 @section('content')
+    <div class="whatsapp-demo-page">
     @php
         $setup = $setup ?? [];
         $missingItems = [];
@@ -48,8 +49,8 @@
                 @endforeach
             </ul>
             <p class="mb-0 text-sm">
-                Current App URL: <span class="font-medium">{{ $setup['app_url'] ?? '' }}</span><br>
-                Current Webhook URL: <span class="font-medium">{{ $setup['webhook_url'] ?? '' }}</span>
+                Current App URL: <span class="font-medium webhook-url">{{ $setup['app_url'] ?? '' }}</span><br>
+                Current Webhook URL: <span class="font-medium webhook-url">{{ $setup['webhook_url'] ?? '' }}</span>
             </p>
         </div>
     @endif
@@ -87,7 +88,7 @@
         <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700">
             <h6 class="mb-0 font-semibold text-lg">Send Test WhatsApp Message</h6>
             <p class="text-xs text-secondary-light mb-0 mt-1">
-                Inbound webhook URL for Twilio: <span class="font-medium">{{ $webhookUrl }}</span>
+                Inbound webhook URL for Twilio: <span class="font-medium webhook-url">{{ $webhookUrl }}</span>
             </p>
             <p class="text-xs text-secondary-light mb-0 mt-1">
                 You can override this URL with <span class="font-medium">TWILIO_WHATSAPP_WEBHOOK_URL</span> in `.env`.
@@ -142,7 +143,7 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive scroll-sm">
-                <table class="table bordered-table mb-0">
+                <table id="whatsapp-webhooks-table" class="table bordered-table mb-0">
                     <thead>
                         <tr>
                             <th>Time</th>
@@ -196,7 +197,7 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive scroll-sm">
-                <table class="table bordered-table mb-0">
+                <table id="whatsapp-activity-table" class="table bordered-table mb-0">
                     <thead>
                         <tr>
                             <th>Time</th>
@@ -230,5 +231,104 @@
                 </table>
             </div>
         </div>
+    </div>
+
+    <style>
+        html,
+        body {
+            max-width: 100%;
+            overflow-x: hidden !important;
+        }
+
+        #whatsapp-webhooks-table,
+        #whatsapp-activity-table,
+        .whatsapp-demo-page .table {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: fixed;
+        }
+
+        #whatsapp-webhooks-table th,
+        #whatsapp-webhooks-table td,
+        #whatsapp-activity-table th,
+        #whatsapp-activity-table td {
+            white-space: normal !important;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            vertical-align: top;
+        }
+
+        #whatsapp-webhooks-table td:nth-child(4),
+        #whatsapp-webhooks-table td:nth-child(7),
+        #whatsapp-activity-table td:nth-child(5),
+        #whatsapp-activity-table td:nth-child(6) {
+            font-size: 0.85rem;
+            line-height: 1.35;
+        }
+
+        #whatsapp-webhooks-table th:nth-child(1),
+        #whatsapp-webhooks-table td:nth-child(1) { width: 14%; }
+        #whatsapp-webhooks-table th:nth-child(2),
+        #whatsapp-webhooks-table td:nth-child(2) { width: 9%; }
+        #whatsapp-webhooks-table th:nth-child(3),
+        #whatsapp-webhooks-table td:nth-child(3) { width: 14%; }
+        #whatsapp-webhooks-table th:nth-child(4),
+        #whatsapp-webhooks-table td:nth-child(4) { width: 28%; }
+        #whatsapp-webhooks-table th:nth-child(5),
+        #whatsapp-webhooks-table td:nth-child(5) { width: 14%; }
+        #whatsapp-webhooks-table th:nth-child(6),
+        #whatsapp-webhooks-table td:nth-child(6) { width: 8%; }
+        #whatsapp-webhooks-table th:nth-child(7),
+        #whatsapp-webhooks-table td:nth-child(7) { width: 13%; }
+
+        #whatsapp-activity-table th:nth-child(1),
+        #whatsapp-activity-table td:nth-child(1) { width: 14%; }
+        #whatsapp-activity-table th:nth-child(2),
+        #whatsapp-activity-table td:nth-child(2) { width: 10%; }
+        #whatsapp-activity-table th:nth-child(3),
+        #whatsapp-activity-table td:nth-child(3) { width: 16%; }
+        #whatsapp-activity-table th:nth-child(4),
+        #whatsapp-activity-table td:nth-child(4) { width: 8%; }
+        #whatsapp-activity-table th:nth-child(5),
+        #whatsapp-activity-table td:nth-child(5) { width: 32%; }
+        #whatsapp-activity-table th:nth-child(6),
+        #whatsapp-activity-table td:nth-child(6) { width: 20%; }
+
+        .whatsapp-demo-page {
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
+        .whatsapp-demo-page .table-responsive,
+        .whatsapp-demo-page .dataTables_wrapper,
+        .whatsapp-demo-page .dataTables_scroll,
+        .whatsapp-demo-page .dataTables_scrollHead,
+        .whatsapp-demo-page .dataTables_scrollBody {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+        }
+
+        .whatsapp-demo-page .card,
+        .whatsapp-demo-page .card-header,
+        .whatsapp-demo-page .card-body,
+        .whatsapp-demo-page .table-responsive,
+        .whatsapp-demo-page .grid {
+            min-width: 0;
+        }
+
+        .dashboard-main,
+        .dashboard-main-body {
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
+        .whatsapp-demo-page .webhook-url {
+            word-break: break-all;
+            overflow-wrap: anywhere;
+        }
+    </style>
     </div>
 @endsection
