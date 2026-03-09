@@ -20,7 +20,7 @@ class WhatsAppWebhookService
      */
     public function ingest(array $payload): array
     {
-        $message = $this->extractFirstMessage($payload);
+        $message = $this->extractInboundMessage($payload);
 
         if ($message === null) {
             return [
@@ -30,7 +30,7 @@ class WhatsAppWebhookService
         }
 
         $eventId = $this->resolveEventId($payload, $message);
-        $eventType = (string) data_get($message, 'type', 'unknown');
+        $eventType = (string) data_get($message, 'event_type', data_get($message, 'type', 'unknown'));
 
         $webhookEvent = $this->findOrPrepareWebhookEvent($eventId, $payload, $eventType);
 
@@ -57,21 +57,33 @@ class WhatsAppWebhookService
                     'happened_at' => $this->resolveHappenedAt($message),
                 ]);
 
-                $followUp = FollowUp::create([
-                    'lead_id' => $lead->id,
-                    'contact_id' => $contact->id,
-                    'trigger_type' => $leadCreated ? 'auto_first_message' : 'auto_inbound_message',
-                    'stage_snapshot' => $lead->stage,
-                    'status' => 'pending',
-                    'due_at' => now()->addMinutes($this->followUpMinutes()),
-                    'summary' => $leadCreated
-                        ? 'Auto follow-up from first inbound WhatsApp message'
-                        : 'Auto follow-up from new inbound WhatsApp message',
-                    'metadata' => [
-                        'platform' => 'whatsapp',
-                        'platform_message_id' => $activity->platform_message_id,
-                    ],
-                ]);
+                $manualFollowUpRequired = false;
+                $manualFollowUpReason = null;
+                $followUp = null;
+
+                try {
+                    $followUp = FollowUp::create([
+                        'lead_id' => $lead->id,
+                        'contact_id' => $contact->id,
+                        'trigger_type' => $leadCreated ? 'auto_first_message' : 'auto_inbound_message',
+                        'stage_snapshot' => $this->resolveStageSnapshot($lead, $leadCreated),
+                        'status' => 'pending',
+                        'due_at' => now(),
+                        'summary' => $leadCreated
+                            ? 'Auto initial follow-up from inbound WhatsApp message'
+                            : 'Auto follow-up from inbound WhatsApp message',
+                        'metadata' => [
+                            'platform' => 'whatsapp',
+                            'platform_message_id' => $activity->platform_message_id,
+                            'auto_created' => true,
+                        ],
+                    ]);
+                } catch (Throwable $exception) {
+                    report($exception);
+
+                    $manualFollowUpRequired = true;
+                    $manualFollowUpReason = 'Auto follow-up could not be created. Please add follow-up manually.';
+                }
 
                 $lead->forceFill([
                     'last_activity_at' => $activity->happened_at,
@@ -85,19 +97,32 @@ class WhatsAppWebhookService
                     'lead_status' => $lead->status,
                     'lead_created' => $leadCreated,
                     'activity_id' => $activity->id,
-                    'follow_up_id' => $followUp->id,
-                    'follow_up_due_at' => $followUp->due_at?->toISOString(),
+                    'follow_up_id' => $followUp?->id,
+                    'follow_up_due_at' => $followUp?->due_at?->toISOString(),
+                    'manual_follow_up_required' => $manualFollowUpRequired,
+                    'manual_follow_up_reason' => $manualFollowUpReason,
                 ];
             });
 
+            $manualFollowUpRequired = (bool) ($result['manual_follow_up_required'] ?? false);
+
+            $eventPayload = $payload;
+            $eventPayload['_crm'] = [
+                'contact_id' => $result['contact_id'] ?? null,
+                'lead_id' => $result['lead_id'] ?? null,
+                'follow_up_id' => $result['follow_up_id'] ?? null,
+                'manual_follow_up_required' => $manualFollowUpRequired,
+            ];
+
             $webhookEvent->forceFill([
+                'payload' => $eventPayload,
                 'status' => 'processed',
-                'error_message' => null,
+                'error_message' => $manualFollowUpRequired ? (string) ($result['manual_follow_up_reason'] ?? '') : null,
                 'processed_at' => now(),
             ])->save();
 
             return array_merge([
-                'status' => 'processed',
+                'status' => $manualFollowUpRequired ? 'processed_with_warning' : 'processed',
                 'event_id' => $eventId,
             ], $result);
         } catch (Throwable $exception) {
@@ -126,36 +151,13 @@ class WhatsAppWebhookService
     {
         $contact = $this->resolveContact($payload, $message);
 
-        $openLead = Lead::query()
+        $existingLead = Lead::query()
             ->where('contact_id', $contact->id)
-            ->where('status', 'open')
             ->latest('updated_at')
             ->first();
 
-        if ($openLead !== null) {
-            return [$contact, $openLead, false];
-        }
-
-        $recentClosedLead = Lead::query()
-            ->where('contact_id', $contact->id)
-            ->where('status', 'closed')
-            ->whereNotNull('closed_at')
-            ->latest('closed_at')
-            ->first();
-
-        if ($recentClosedLead !== null && $recentClosedLead->closed_at !== null) {
-            $reopenLimit = now()->subDays($this->reopenWindowDays());
-
-            if ($recentClosedLead->closed_at->greaterThanOrEqualTo($reopenLimit)) {
-                $recentClosedLead->forceFill([
-                    'status' => 'open',
-                    'stage' => $this->reopenStage(),
-                    'closed_at' => null,
-                    'last_activity_at' => now(),
-                ])->save();
-
-                return [$contact, $recentClosedLead, false];
-            }
+        if ($existingLead !== null) {
+            return [$contact, $existingLead, false];
         }
 
         $lead = Lead::create([
@@ -192,8 +194,6 @@ class WhatsAppWebhookService
 
     /**
      * @param  array<string, mixed>  $payload
-     * @param  string  $eventId
-     * @param  string  $eventType
      */
     private function findOrPrepareWebhookEvent(string $eventId, array $payload, string $eventType): WebhookEvent
     {
@@ -235,11 +235,15 @@ class WhatsAppWebhookService
      */
     private function resolveContact(array $payload, array $message): Contact
     {
-        $waId = (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.wa_id', '');
-        $fallbackFrom = (string) data_get($message, 'from', '');
-        $externalId = $waId !== '' ? $waId : $fallbackFrom;
-        $normalizedPhone = $this->normalizePhone($externalId);
-        $displayName = (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.profile.name', '');
+        $isTwilio = $this->isTwilioPayload($payload);
+        $rawExternalId = $isTwilio
+            ? (string) data_get($payload, 'WaId', data_get($payload, 'From', data_get($message, 'from', '')))
+            : (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.wa_id', data_get($message, 'from', ''));
+        $externalId = $this->normalizeExternalId($rawExternalId);
+        $normalizedPhone = $this->normalizePhone($rawExternalId);
+        $displayName = $isTwilio
+            ? (string) data_get($payload, 'ProfileName', data_get($message, 'profile_name', ''))
+            : (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.profile.name', data_get($message, 'profile_name', ''));
 
         $identity = $externalId !== ''
             ? ContactIdentity::query()
@@ -259,7 +263,7 @@ class WhatsAppWebhookService
         if ($contact === null) {
             $contact = Contact::create([
                 'full_name' => $displayName !== '' ? $displayName : null,
-                'phone' => $externalId !== '' ? $externalId : null,
+                'phone' => $normalizedPhone,
                 'normalized_phone' => $normalizedPhone,
                 'default_source' => 'whatsapp',
                 'metadata' => [
@@ -269,7 +273,7 @@ class WhatsAppWebhookService
         } else {
             $contact->forceFill([
                 'full_name' => $contact->full_name ?: ($displayName !== '' ? $displayName : null),
-                'phone' => $contact->phone ?: ($externalId !== '' ? $externalId : null),
+                'phone' => $contact->phone ?: $normalizedPhone,
                 'normalized_phone' => $contact->normalized_phone ?: $normalizedPhone,
             ])->save();
         }
@@ -283,7 +287,7 @@ class WhatsAppWebhookService
                 [
                     'contact_id' => $contact->id,
                     'display_name' => $displayName !== '' ? $displayName : null,
-                    'raw_payload' => data_get($payload, 'entry.0.changes.0.value.contacts.0', []),
+                    'raw_payload' => $isTwilio ? $payload : data_get($payload, 'entry.0.changes.0.value.contacts.0', []),
                     'last_seen_at' => now(),
                 ]
             );
@@ -310,8 +314,36 @@ class WhatsAppWebhookService
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>|null
      */
-    private function extractFirstMessage(array $payload): ?array
+    private function extractInboundMessage(array $payload): ?array
     {
+        if ($this->isTwilioPayload($payload)) {
+            $from = (string) data_get($payload, 'From', '');
+            $messageSid = (string) data_get($payload, 'MessageSid', data_get($payload, 'SmsMessageSid', ''));
+
+            if ($messageSid === '' || !str_starts_with(strtolower($from), 'whatsapp:')) {
+                return null;
+            }
+
+            $body = trim((string) data_get($payload, 'Body', ''));
+            $numMedia = (int) data_get($payload, 'NumMedia', 0);
+
+            if ($body === '' && $numMedia > 0) {
+                $body = '[media message]';
+            }
+
+            return [
+                'id' => $messageSid,
+                'type' => $body === '' ? 'unknown' : 'text',
+                'from' => (string) data_get($payload, 'WaId', $from),
+                'profile_name' => (string) data_get($payload, 'ProfileName', ''),
+                'body' => $body,
+                'timestamp' => now()->timestamp,
+                'provider' => 'twilio',
+                'event_type' => 'inbound_message',
+                'payload' => $payload,
+            ];
+        }
+
         $messages = data_get($payload, 'entry.0.changes.0.value.messages');
 
         if (!is_array($messages) || !isset($messages[0]) || !is_array($messages[0])) {
@@ -326,6 +358,12 @@ class WhatsAppWebhookService
      */
     private function extractMessageBody(array $message): string
     {
+        $provider = (string) data_get($message, 'provider', '');
+
+        if ($provider === 'twilio') {
+            return (string) data_get($message, 'body', '');
+        }
+
         $type = (string) data_get($message, 'type', 'text');
 
         if ($type === 'text') {
@@ -354,18 +392,37 @@ class WhatsAppWebhookService
         return '+'.$digits;
     }
 
-    private function followUpMinutes(): int
+    private function normalizeExternalId(string $value): string
     {
-        return max(1, (int) config('crm.whatsapp.follow_up_minutes', 60));
+        $trimmed = trim(str_ireplace('whatsapp:', '', $value));
+        $digits = preg_replace('/\D+/', '', $trimmed);
+
+        return $digits === null ? '' : $digits;
     }
 
-    private function reopenWindowDays(): int
+    private function resolveStageSnapshot(Lead $lead, bool $leadCreated): string
     {
-        return max(0, (int) config('crm.whatsapp.reopen_window_days', 30));
+        if ($leadCreated) {
+            return $lead->stage;
+        }
+
+        $previousFollowUp = FollowUp::query()
+            ->where('lead_id', $lead->id)
+            ->latest('id')
+            ->first();
+
+        if ($previousFollowUp !== null && trim((string) $previousFollowUp->stage_snapshot) !== '') {
+            return $previousFollowUp->stage_snapshot;
+        }
+
+        return $lead->stage;
     }
 
-    private function reopenStage(): string
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function isTwilioPayload(array $payload): bool
     {
-        return (string) config('crm.whatsapp.reopen_stage', 'contacted');
+        return isset($payload['MessageSid']) || isset($payload['SmsMessageSid']) || isset($payload['WaId']);
     }
 }

@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
+use Twilio\Security\RequestValidator;
 
 class WhatsAppWebhookController extends Controller
 {
@@ -23,15 +24,19 @@ class WhatsAppWebhookController extends Controller
         $challenge = (string) $request->query->get('hub.challenge');
         $expectedToken = (string) config('crm.whatsapp.verify_token', '');
 
-        if (
-            $mode === 'subscribe'
-            && $expectedToken !== ''
-            && hash_equals($expectedToken, $verifyToken)
-        ) {
-            return response($challenge, 200, ['Content-Type' => 'text/plain']);
+        if ($mode !== '' || $verifyToken !== '' || $challenge !== '') {
+            if (
+                $mode === 'subscribe'
+                && $expectedToken !== ''
+                && hash_equals($expectedToken, $verifyToken)
+            ) {
+                return response($challenge, 200, ['Content-Type' => 'text/plain']);
+            }
+
+            return response('Forbidden', 403, ['Content-Type' => 'text/plain']);
         }
 
-        return response('Forbidden', 403, ['Content-Type' => 'text/plain']);
+        return response('OK', 200, ['Content-Type' => 'text/plain']);
     }
 
     public function receive(Request $request): JsonResponse
@@ -65,6 +70,39 @@ class WhatsAppWebhookController extends Controller
 
     private function hasValidSignature(Request $request): bool
     {
+        if ($this->isMetaWebhook($request)) {
+            return $this->hasValidMetaSignature($request);
+        }
+
+        $shouldValidate = (bool) config('crm.whatsapp.twilio.validate_signature', true);
+
+        if (!$shouldValidate) {
+            return true;
+        }
+
+        $authToken = (string) config('services.twilio.auth_token', '');
+
+        if ($authToken === '') {
+            return true;
+        }
+
+        $signature = (string) $request->header('X-Twilio-Signature', '');
+
+        if ($signature === '') {
+            return false;
+        }
+
+        $validator = new RequestValidator($authToken);
+
+        return $validator->validate(
+            $signature,
+            $request->fullUrl(),
+            $request->post()
+        );
+    }
+
+    private function hasValidMetaSignature(Request $request): bool
+    {
         $secret = (string) config('crm.whatsapp.app_secret', '');
 
         if ($secret === '') {
@@ -81,5 +119,12 @@ class WhatsAppWebhookController extends Controller
         $expectedHash = hash_hmac('sha256', $request->getContent(), $secret);
 
         return hash_equals($expectedHash, $incomingHash);
+    }
+
+    private function isMetaWebhook(Request $request): bool
+    {
+        $entry = $request->input('entry');
+
+        return is_array($entry);
     }
 }

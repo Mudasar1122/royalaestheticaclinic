@@ -99,11 +99,16 @@
                 <div class="card-body p-6 h-full flex flex-col">
                     <div>
                         <h6 class="mb-1 font-bold text-lg">Lead Pipeline</h6>
-                        <span class="text-sm font-medium text-secondary-light whitespace-nowrap block overflow-x-auto">New -> Contacted -> Visit -> Proposal -> Booked</span>
+                        <span class="text-sm font-medium text-secondary-light whitespace-nowrap block overflow-x-auto">
+                            New -> Contacted -> Proposal -> Booked
+                        </span>
                     </div>
 
                     <div class="mt-4">
-                        <h3 class="mb-0 font-bold text-2xl">74 active leads</h3>
+                        <h3 class="mb-0 font-bold text-2xl">{{ number_format($summary['active_leads'] ?? 0) }} active leads</h3>
+                        <span class="text-sm text-secondary-light">
+                            {{ number_format($summary['pending_follow_ups'] ?? 0) }} total pending follow-ups
+                        </span>
                     </div>
 
                     <div class="mt-4 rounded-xl border border-neutral-200 dark:border-neutral-600 bg-gradient-to-b from-primary-50/70 to-neutral-50/70 dark:from-primary-900/10 dark:to-neutral-700/20 p-3">
@@ -111,30 +116,14 @@
                     </div>
 
                     <div class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-primary-600"></span>
-                            <span class="text-secondary-light">New: 24</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-success-600"></span>
-                            <span class="text-secondary-light">Contacted: 18</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-warning-600"></span>
-                            <span class="text-secondary-light">Visit: 12</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-                            <span class="text-secondary-light">Proposal: 9</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-pink-600"></span>
-                            <span class="text-secondary-light">Booked: 11</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-info-600"></span>
-                            <span class="text-secondary-light">Follow-up: 8</span>
-                        </div>
+                        @foreach ($pipelineStats as $pipelineStat)
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full {{ $pipelineStat['dot_class'] }}"></span>
+                                <span class="text-secondary-light">
+                                    {{ $pipelineStat['label'] }}: {{ number_format($pipelineStat['total']) }}
+                                </span>
+                            </div>
+                        @endforeach
                     </div>
                 </div>
             </div>
@@ -145,105 +134,35 @@
                 <div class="card-body p-6">
                     <div class="flex items-center flex-wrap gap-2 justify-between">
                         <h6 class="mb-2 font-bold text-lg">Lead Sources</h6>
-                        <div class="">
-                            <select class="form-select form-select-sm w-auto bg-white dark:bg-neutral-700 border text-secondary-light">
-                                <option>Weekly</option>
-                                <option>Monthly</option>
-                                <option>Today</option>
-                            </select>
+                        <div class="text-sm text-secondary-light">
+                            Live from CRM leads
                         </div>
                     </div>
 
                     <div class="mt-4">
-                        <div class="flex items-center justify-between gap-3 mb-4">
-                            <div class="flex items-center">
-                                <span class="text-2xl line-height-1 flex align-content-center shrink-0 text-success-500 dark:text-success-500">
-                                    <iconify-icon icon="ic:baseline-whatsapp" class="icon"></iconify-icon>
-                                </span>
-                                <div class="ps-4">
-                                    <span class="text-neutral-600 dark:text-neutral-200 font-medium text-sm">WhatsApp</span>
-                                    <span class="text-secondary-light text-xs block">42 leads - 68% response</span>
+                        @forelse ($sourcePerformance as $source)
+                            <div class="flex items-center justify-between gap-3 {{ !$loop->last ? 'mb-4' : '' }}">
+                                <div class="flex items-center">
+                                    <span class="text-2xl line-height-1 flex align-content-center shrink-0 {{ $source['icon_class'] }}">
+                                        <iconify-icon icon="{{ $source['icon'] }}" class="icon"></iconify-icon>
+                                    </span>
+                                    <div class="ps-4">
+                                        <span class="text-neutral-600 dark:text-neutral-200 font-medium text-sm">{{ $source['label'] }}</span>
+                                        <span class="text-secondary-light text-xs block">
+                                            {{ number_format($source['total']) }} leads - {{ $source['response_rate'] }}% response
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 w-full max-w-[200px]">
+                                    <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600">
+                                        <div class="{{ $source['bar_class'] }} h-2.5 rounded-full" style="width: {{ $source['response_rate'] }}%"></div>
+                                    </div>
+                                    <span class="text-secondary-light font-xs font-semibold">{{ $source['response_rate'] }}%</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 w-full max-w-[200px]">
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600">
-                                    <div class="bg-success-500 h-2.5 rounded-full" style="width: 68%"></div>
-                                </div>
-                                <span class="text-secondary-light font-xs font-semibold">68%</span>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center justify-between gap-3 mb-4">
-                            <div class="flex items-center">
-                                <span class="text-2xl line-height-1 flex align-content-center shrink-0 text-purple-600 dark:text-purple-500">
-                                    <iconify-icon icon="ri:instagram-fill" class="icon"></iconify-icon>
-                                </span>
-                                <div class="ps-4">
-                                    <span class="text-neutral-600 dark:text-neutral-200 font-medium text-sm">Instagram</span>
-                                    <span class="text-secondary-light text-xs block">36 leads - 62% response</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2 w-full max-w-[200px]">
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600">
-                                    <div class="bg-purple-600 h-2.5 rounded-full" style="width: 62%"></div>
-                                </div>
-                                <span class="text-secondary-light font-xs font-semibold">62%</span>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center justify-between gap-3 mb-4">
-                            <div class="flex items-center">
-                                <span class="text-2xl line-height-1 flex align-content-center shrink-0 text-blue-600 dark:text-blue-500">
-                                    <iconify-icon icon="ri:facebook-fill" class="icon"></iconify-icon>
-                                </span>
-                                <div class="ps-4">
-                                    <span class="text-neutral-600 dark:text-neutral-200 font-medium text-sm">Facebook</span>
-                                    <span class="text-secondary-light text-xs block">28 leads - 49% response</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2 w-full max-w-[200px]">
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600">
-                                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: 49%"></div>
-                                </div>
-                                <span class="text-secondary-light font-xs font-semibold">49%</span>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center justify-between gap-3 mb-4">
-                            <div class="flex items-center">
-                                <span class="text-2xl line-height-1 flex align-content-center shrink-0 text-neutral-900 dark:text-neutral-200">
-                                    <iconify-icon icon="simple-icons:tiktok" class="icon"></iconify-icon>
-                                </span>
-                                <div class="ps-4">
-                                    <span class="text-neutral-600 dark:text-neutral-200 font-medium text-sm">TikTok</span>
-                                    <span class="text-secondary-light text-xs block">22 leads - 41% response</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2 w-full max-w-[200px]">
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600">
-                                    <div class="bg-neutral-900 h-2.5 rounded-full" style="width: 41%"></div>
-                                </div>
-                                <span class="text-secondary-light font-xs font-semibold">41%</span>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center">
-                                <span class="text-2xl line-height-1 flex align-content-center shrink-0 text-warning-600 dark:text-warning-500">
-                                    <iconify-icon icon="ri:google-fill" class="icon"></iconify-icon>
-                                </span>
-                                <div class="ps-4">
-                                    <span class="text-neutral-600 dark:text-neutral-200 font-medium text-sm">Google Business</span>
-                                    <span class="text-secondary-light text-xs block">19 leads - 54% response</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2 w-full max-w-[200px]">
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-600">
-                                    <div class="bg-warning-600 h-2.5 rounded-full" style="width: 54%"></div>
-                                </div>
-                                <span class="text-secondary-light font-xs font-semibold">54%</span>
-                            </div>
-                        </div>
+                        @empty
+                            <p class="text-secondary-light mb-0">No lead source data available.</p>
+                        @endforelse
                     </div>
 
                 </div>
@@ -256,31 +175,24 @@
                     <div class="flex items-center flex-wrap gap-2 justify-between">
                         <div>
                             <h6 class="mb-2 font-bold text-lg">Service Mix</h6>
-                            <span class="text-sm font-medium text-secondary-light">Skin Treatment, Hair Treatment, Botox</span>
-                        </div>
-                        <div class="">
-                            <select class="form-select form-select-sm w-auto bg-white dark:bg-neutral-700 border text-secondary-light">
-                                <option>Monthly</option>
-                                <option>Quarterly</option>
-                                <option>Yearly</option>
-                            </select>
+                            <span class="text-sm font-medium text-secondary-light">Top procedures selected by leads</span>
                         </div>
                     </div>
 
                     <div class="flex flex-wrap items-center mt-4">
                         <ul class="shrink-0">
-                            <li class="flex items-center gap-2 mb-7">
-                                <span class="w-3 h-3 rounded-full bg-primary-600"></span>
-                                <span class="text-secondary-light text-sm font-medium">Skin Treatment: 52%</span>
-                            </li>
-                            <li class="flex items-center gap-2 mb-7">
-                                <span class="w-3 h-3 rounded-full bg-success-600"></span>
-                                <span class="text-secondary-light text-sm font-medium">Hair Treatment: 28%</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-warning-600"></span>
-                                <span class="text-secondary-light text-sm font-medium">Botox &amp; Aesthetics: 20%</span>
-                            </li>
+                            @forelse ($serviceMix as $mix)
+                                <li class="flex items-center gap-2 {{ !$loop->last ? 'mb-7' : '' }}">
+                                    <span class="w-3 h-3 rounded-full {{ $mix['dot_class'] }}"></span>
+                                    <span class="text-secondary-light text-sm font-medium">
+                                        {{ $mix['label'] }}: {{ $mix['percentage'] }}% ({{ number_format($mix['total']) }})
+                                    </span>
+                                </li>
+                            @empty
+                                <li class="text-secondary-light text-sm font-medium">
+                                    No procedure interest data available yet.
+                                </li>
+                            @endforelse
                         </ul>
                         <div id="donutChart" class="grow apexcharts-tooltip-z-none title-style circle-none"></div>
                     </div>
@@ -293,7 +205,7 @@
             <div class="card h-full border-0 overflow-hidden">
                 <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 py-4 px-6 flex items-center justify-between">
                     <h6 class="text-lg font-semibold mb-0">Follow-ups Due Today</h6>
-                    <a href="javascript:void(0)" class="text-primary-600 dark:text-primary-600 hover-text-primary flex items-center gap-1">
+                    <a href="{{ route('clinicAppointments', ['tab' => 'today']) }}" class="text-primary-600 dark:text-primary-600 hover-text-primary flex items-center gap-1">
                         View All
                         <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
                     </a>
@@ -311,66 +223,28 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Amna Saeed</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2103</span>
-                                        </div>
-                                    </td>
-                                    <td><span class="bg-warning-100 dark:bg-warning-600/25 text-warning-600 dark:text-warning-400 px-4 py-1 rounded-full font-medium text-sm">Contacted</span></td>
-                                    <td>Send clinic location</td>
-                                    <td>Fatima</td>
-                                    <td>WhatsApp</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Hira Nawaz</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2141</span>
-                                        </div>
-                                    </td>
-                                    <td><span class="bg-info-100 dark:bg-info-600/25 text-info-600 dark:text-info-400 px-4 py-1 rounded-full font-medium text-sm">Visit</span></td>
-                                    <td>Confirm time 4:30 PM</td>
-                                    <td>Rania</td>
-                                    <td>Instagram</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Omar Sheikh</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2168</span>
-                                        </div>
-                                    </td>
-                                    <td><span class="bg-purple-100 dark:bg-purple-600/25 text-purple-600 dark:text-purple-400 px-4 py-1 rounded-full font-medium text-sm">Proposal</span></td>
-                                    <td>Share treatment plan</td>
-                                    <td>Asad</td>
-                                    <td>Facebook</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Ruba Ali</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2199</span>
-                                        </div>
-                                    </td>
-                                    <td><span class="bg-success-100 dark:bg-success-600/25 text-success-600 dark:text-success-400 px-4 py-1 rounded-full font-medium text-sm">Booked</span></td>
-                                    <td>Send pre-visit checklist</td>
-                                    <td>Maryam</td>
-                                    <td>Google</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Talha Noor</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2205</span>
-                                        </div>
-                                    </td>
-                                    <td><span class="bg-danger-100 dark:bg-danger-600/25 text-danger-600 dark:text-danger-400 px-4 py-1 rounded-full font-medium text-sm">No Response</span></td>
-                                    <td>Final attempt SMS</td>
-                                    <td>Usman</td>
-                                    <td>TikTok</td>
-                                </tr>
+                                @forelse ($todayFollowUps as $followUp)
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">{{ $followUp['lead_name'] }}</span>
+                                                <span class="text-sm block font-normal text-secondary-light">{{ $followUp['lead_code'] }}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="{{ $followUp['stage_class'] }} px-4 py-1 rounded-full font-medium text-sm">
+                                                {{ $followUp['stage_label'] }}
+                                            </span>
+                                        </td>
+                                        <td>{{ $followUp['next_action'] }}</td>
+                                        <td>{{ $followUp['owner'] }}</td>
+                                        <td>{{ $followUp['channel'] }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" class="text-center text-secondary-light py-6">No follow-ups due today.</td>
+                                    </tr>
+                                @endforelse
                             </tbody>
                         </table>
                     </div>
@@ -382,7 +256,7 @@
             <div class="card h-full border-0">
                 <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 py-4 px-6 flex items-center justify-between">
                     <h6 class="text-lg font-semibold mb-0">Recent Leads</h6>
-                    <a href="javascript:void(0)" class="text-primary-600 dark:text-primary-600 hover-text-primary flex items-center gap-1">
+                    <a href="{{ route('clinicLeads') }}" class="text-primary-600 dark:text-primary-600 hover-text-primary flex items-center gap-1">
                         View All
                         <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
                     </a>
@@ -400,66 +274,28 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Sana Noor</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2211</span>
-                                        </div>
-                                    </td>
-                                    <td>Skin Treatment</td>
-                                    <td>Instagram</td>
-                                    <td><span class="bg-warning-100 dark:bg-warning-600/25 text-warning-600 dark:text-warning-400 px-4 py-1 rounded-full font-medium text-sm">Contacted</span></td>
-                                    <td>Call back 5 PM</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Hamza Qureshi</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2220</span>
-                                        </div>
-                                    </td>
-                                    <td>Hair Treatment</td>
-                                    <td>WhatsApp</td>
-                                    <td><span class="bg-info-100 dark:bg-info-600/25 text-info-600 dark:text-info-400 px-4 py-1 rounded-full font-medium text-sm">Visit</span></td>
-                                    <td>Book consultation</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Noura Aziz</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2244</span>
-                                        </div>
-                                    </td>
-                                    <td>Botox</td>
-                                    <td>Google Business</td>
-                                    <td><span class="bg-success-100 dark:bg-success-600/25 text-success-600 dark:text-success-400 px-4 py-1 rounded-full font-medium text-sm">Booked</span></td>
-                                    <td>Send reminder</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Rima Farooq</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2256</span>
-                                        </div>
-                                    </td>
-                                    <td>Skin Treatment</td>
-                                    <td>Facebook</td>
-                                    <td><span class="bg-purple-100 dark:bg-purple-600/25 text-purple-600 dark:text-purple-400 px-4 py-1 rounded-full font-medium text-sm">Proposal</span></td>
-                                    <td>Share plan</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div>
-                                            <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">Layla Ahmed</span>
-                                            <span class="text-sm block font-normal text-secondary-light">LD-2269</span>
-                                        </div>
-                                    </td>
-                                    <td>Hair Treatment</td>
-                                    <td>TikTok</td>
-                                    <td><span class="bg-danger-100 dark:bg-danger-600/25 text-danger-600 dark:text-danger-400 px-4 py-1 rounded-full font-medium text-sm">New</span></td>
-                                    <td>Initial reply</td>
-                                </tr>
+                                @forelse ($recentLeads as $lead)
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <span class="text-base block line-height-1 font-medium text-neutral-600 dark:text-neutral-200 text-w-200-px">{{ $lead['lead_name'] }}</span>
+                                                <span class="text-sm block font-normal text-secondary-light">{{ $lead['lead_code'] }}</span>
+                                            </div>
+                                        </td>
+                                        <td>{{ $lead['service'] }}</td>
+                                        <td>{{ $lead['source'] }}</td>
+                                        <td>
+                                            <span class="{{ $lead['stage_class'] }} px-4 py-1 rounded-full font-medium text-sm">
+                                                {{ $lead['stage_label'] }}
+                                            </span>
+                                        </td>
+                                        <td>{{ $lead['next_action'] }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" class="text-center text-secondary-light py-6">No leads available yet.</td>
+                                    </tr>
+                                @endforelse
                             </tbody>
                         </table>
                     </div>

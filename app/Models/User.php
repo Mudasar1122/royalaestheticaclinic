@@ -25,6 +25,8 @@ class User extends Authenticatable
         'profile_photo_path',
         'password',
         'role',
+        'module_access',
+        'module_permissions',
         'is_active',
     ];
 
@@ -48,6 +50,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'module_access' => 'array',
+            'module_permissions' => 'array',
             'is_active' => 'boolean',
         ];
     }
@@ -65,6 +69,64 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function hasModule(string $module): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        $moduleAccess = is_array($this->module_access) ? $this->module_access : [];
+
+        return in_array($module, $moduleAccess, true);
+    }
+
+    public function hasModulePermission(string $module, string $permission): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        if (!$this->hasModule($module)) {
+            return false;
+        }
+
+        $permissionMap = is_array($this->module_permissions) ? $this->module_permissions : [];
+        $modulePermissions = $permissionMap[$module] ?? [];
+
+        if (!is_array($modulePermissions) || $modulePermissions === []) {
+            // Backward compatibility for users created before operation-level permissions.
+            return true;
+        }
+
+        return in_array($permission, $modulePermissions, true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function moduleAccessLabels(): array
+    {
+        $moduleOptions = [
+            'lead_management' => 'Lead Management',
+            'campaign_management' => 'Campaign Management',
+        ];
+
+        $moduleAccess = $this->isAdmin()
+            ? array_keys($moduleOptions)
+            : (is_array($this->module_access) ? $this->module_access : []);
+
+        $labels = [];
+
+        foreach ($moduleAccess as $module) {
+            $moduleKey = (string) $module;
+            if (isset($moduleOptions[$moduleKey])) {
+                $labels[] = $moduleOptions[$moduleKey];
+            }
+        }
+
+        return array_values(array_unique($labels));
     }
 
     public function sendPasswordResetNotification($token): void

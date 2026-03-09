@@ -44,14 +44,19 @@ Route::middleware('auth')->group(function (): void {
 
     Route::redirect('/dashboard/index-2', '/dashboard/crm')->name('index2');
 
-    Route::prefix('clinic')->controller(ClinicController::class)->group(function (): void {
-        Route::get('/leads', 'leads')->name('clinicLeads');
-        Route::patch('/leads/{lead}/stage', 'updateLeadStage')->name('clinicLeadStageUpdate');
-        Route::patch('/leads/{lead}', 'updateLead')->name('clinicLeadUpdate');
-        Route::get('/manual-lead', 'createManualLead')->name('clinicManualLead');
-        Route::post('/manual-lead', 'storeManualLead')->name('clinicManualLeadStore');
-        Route::get('/appointments', 'appointments')->name('clinicAppointments');
-        Route::patch('/follow-ups/{followUp}/status', 'updateFollowUpStatus')->name('clinicFollowUpStatusUpdate');
+    Route::prefix('clinic')->middleware('module:lead_management')->controller(ClinicController::class)->group(function (): void {
+        Route::get('/leads', 'leads')->name('clinicLeads')->middleware('module:lead_management,view_leads');
+        Route::patch('/leads/{lead}/stage', 'updateLeadStage')->name('clinicLeadStageUpdate')->middleware('module:lead_management,edit_lead');
+        Route::patch('/leads/{lead}', 'updateLead')->name('clinicLeadUpdate')->middleware('module:lead_management,edit_lead');
+        Route::post('/leads/{lead}/whatsapp/send', 'sendWhatsAppMessage')->name('clinicLeadWhatsAppSend')->middleware('module:lead_management,send_whatsapp');
+        Route::get('/manual-lead', 'createManualLead')->name('clinicManualLead')->middleware('module:lead_management,create_lead');
+        Route::post('/manual-lead', 'storeManualLead')->name('clinicManualLeadStore')->middleware('module:lead_management,create_lead');
+        Route::get('/whatsapp-demo', 'whatsappDemo')->name('clinicWhatsAppDemo')->middleware('module:lead_management,send_whatsapp');
+        Route::post('/whatsapp-demo/send', 'whatsappDemoSend')->name('clinicWhatsAppDemoSend')->middleware('module:lead_management,send_whatsapp');
+        Route::get('/appointments', 'appointments')->name('clinicAppointments')->middleware('module:lead_management,manage_followups');
+        Route::get('/leads/{lead}/follow-up', 'leadFollowUp')->name('clinicLeadFollowUp')->middleware('module:lead_management,manage_followups');
+        Route::post('/leads/{lead}/follow-up', 'storeLeadFollowUp')->name('clinicLeadFollowUpStore')->middleware('module:lead_management,manage_followups');
+        Route::patch('/follow-ups/{followUp}/status', 'updateFollowUpStatus')->name('clinicFollowUpStatusUpdate')->middleware('module:lead_management,manage_followups');
         Route::get('/consultations', 'consultations')->name('clinicConsultations');
         Route::get('/consultation-form', 'consultationForm')->name('clinicConsultationForm');
         Route::get('/treatments', 'treatments')->name('clinicTreatments');
@@ -63,8 +68,8 @@ Route::middleware('auth')->group(function (): void {
         Route::get('chatempty', 'chatempty')->name('chatempty');
         Route::get('chat-message', 'chatMessage')->name('chatMessage');
         Route::get('chat-profile', 'chatProfile')->name('chatProfile');
-        Route::get('email', 'email')->name('email');
-        Route::post('email/campaign', 'sendCampaign')->name('emailCampaignSend');
+        Route::get('email', 'email')->name('email')->middleware('module:campaign_management,view_campaigns');
+        Route::post('email/campaign', 'sendCampaign')->name('emailCampaignSend')->middleware('module:campaign_management');
         Route::get('faq', 'faq')->name('faq');
         Route::get('gallery', 'gallery')->name('gallery');
         Route::get('image-upload', 'imageUpload')->name('imageUpload');
@@ -155,6 +160,10 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/add-user', 'storeUser')->name('storeUser')->middleware('admin');
         Route::get('/users-grid', 'usersGrid')->name('usersGrid')->middleware('admin');
         Route::get('/users-list', 'usersList')->name('usersList')->middleware('admin');
+        Route::get('/{user}/edit', 'editUser')->name('usersEdit')->middleware('admin');
+        Route::get('/{user}/permissions', 'editPermissions')->name('usersPermissionsEdit')->middleware('admin');
+        Route::put('/{user}/permissions', 'updatePermissions')->name('usersPermissionsUpdate')->middleware('admin');
+        Route::put('/{user}', 'updateUser')->name('usersUpdate')->middleware('admin');
         Route::patch('/{user}/status', 'toggleStatus')->name('usersToggleStatus')->middleware('admin');
         Route::get('/view-profile', 'viewProfile')->name('viewProfile');
         Route::post('/view-profile', 'updateProfile')->name('updateProfile');

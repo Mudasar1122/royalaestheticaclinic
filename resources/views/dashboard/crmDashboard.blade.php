@@ -3,6 +3,8 @@
 @php
     $title = 'CRM Dashboard';
     $subTitle = 'Social Lead Management';
+    $canCreateLead = auth()->user()?->hasModulePermission('lead_management', 'create_lead') ?? false;
+    $canViewLeads = auth()->user()?->hasModulePermission('lead_management', 'view_leads') ?? false;
 @endphp
 
 @section('content')
@@ -52,7 +54,14 @@
             <div class="card h-full border-0">
                 <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 flex items-center justify-between">
                     <h6 class="mb-0 font-semibold text-lg">Recent Leads & Follow-ups</h6>
-                    <a href="{{ route('clinicLeads') }}" class="btn btn-primary text-sm btn-sm px-3 py-2 rounded-lg">Manage Leads</a>
+                    <div class="flex items-center gap-2">
+                        @if ($canCreateLead)
+                            <a href="{{ route('clinicManualLead') }}" class="btn btn-primary text-sm btn-sm px-3 py-2 rounded-lg">Create New Lead</a>
+                        @endif
+                        @if ($canViewLeads)
+                            <a href="{{ route('clinicLeads') }}" class="btn btn-secondary text-sm btn-sm px-3 py-2 rounded-lg">Manage Leads</a>
+                        @endif
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive scroll-sm">
@@ -78,7 +87,7 @@
                                                 <span class="text-xs text-secondary-light">{{ $lead->contact?->phone ?? $lead->contact?->email ?? 'No contact info' }}</span>
                                             </div>
                                         </td>
-                                        <td>{{ ucfirst(str_replace('_', ' ', $lead->source_platform)) }}</td>
+                                        <td>{{ $lead->source_platform === 'manual' ? 'Walk In Lead' : ucfirst(str_replace('_', ' ', $lead->source_platform)) }}</td>
                                         <td>
                                             <span class="px-3 py-1 rounded-full text-sm font-medium bg-info-100 dark:bg-info-600/25 text-info-600 dark:text-info-300">
                                                 {{ ucfirst($lead->stage) }}
@@ -91,8 +100,8 @@
                                         </td>
                                         <td>
                                             @if ($nextFollowUp)
-                                                <span class="{{ $nextFollowUp->due_at < now() ? 'text-danger-600 font-medium' : '' }}">
-                                                    {{ $nextFollowUp->due_at?->format('d M Y h:i A') }}
+                                                <span class="{{ $nextFollowUp->due_at < now('Asia/Karachi') ? 'text-danger-600 font-medium' : '' }}">
+                                                    {{ $nextFollowUp->due_at?->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
                                                 </span>
                                             @else
                                                 <span class="text-secondary-light">No pending follow-up</span>

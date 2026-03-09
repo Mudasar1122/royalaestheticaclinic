@@ -1,37 +1,49 @@
-# CRM WhatsApp Webhook Flow
+# CRM WhatsApp Webhook Flow (Twilio)
 
-## Endpoint
+## Endpoints
 
-- `GET /api/webhooks/whatsapp`: webhook verification (`hub.mode`, `hub.verify_token`, `hub.challenge`)
-- `POST /api/webhooks/whatsapp`: inbound webhook processing
+- `GET /api/webhooks/whatsapp`
+  - Health-check endpoint (returns `OK`)
+  - Still supports Meta verification params (`hub.mode`, `hub.verify_token`, `hub.challenge`) if used
+- `POST /api/webhooks/whatsapp`
+  - Twilio inbound WhatsApp webhook receiver
+- `POST /clinic/leads/{lead}/whatsapp/send`
+  - Outbound WhatsApp message send from CRM using Twilio
 
-## Core Behavior
+## Required Env Variables
 
-1. If first WhatsApp message arrives from unknown contact:
-   - Create `contacts` record
-   - Create `contact_identities` record (`platform=whatsapp`)
-   - Create `leads` record (`stage=initial`, `status=open`)
-   - Create `lead_activities` record (`message_received`)
-   - Create `follow_ups` record (`trigger_type=auto_first_message`)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_WHATSAPP_FROM` (example: `whatsapp:+14155238886`)
+- `TWILIO_WHATSAPP_VALIDATE_SIGNATURE` (`true` in production)
+- Optional: `TWILIO_WHATSAPP_STATUS_CALLBACK`
 
-2. If contact sends another message later:
-   - Keep same open lead
-   - Add new `lead_activities` record
-   - Add new `follow_ups` record (`trigger_type=auto_inbound_message`)
+## Inbound Behavior
 
-3. If previous lead is closed:
-   - Reopen if inside reopen window (`CRM_LEAD_REOPEN_WINDOW_DAYS`)
-   - Otherwise create a new lead
+1. Twilio sends inbound WhatsApp message to `POST /api/webhooks/whatsapp`.
+2. Signature is validated using `X-Twilio-Signature` and `TWILIO_AUTH_TOKEN` (when enabled).
+3. Duplicate event protection:
+   - `webhook_events` unique key: `platform + event_id`
+4. Contact + lead resolution:
+   - If this number has no lead: create lead.
+   - If lead already exists for this number: reuse that lead (no new lead).
+5. Follow-up auto creation:
+   - Creates follow-up immediately (`due_at = now()`).
+   - For existing leads, stage uses previous follow-up stage (`stage_snapshot` from latest follow-up).
+6. If auto follow-up creation fails:
+   - Event is processed with warning.
+   - Notification is highlighted as "Manual Follow-up Required".
 
-4. Duplicate control:
-   - `webhook_events` stores inbound event IDs (`platform + event_id` unique)
-   - `lead_activities` has unique `(platform, platform_message_id)`
+## Follow-up Remarks to Customer
 
-## Key Tables
+- While updating follow-up status in appointments:
+  - Add remarks
+  - Enable "Send remarks to customer via Twilio WhatsApp"
+- System sends the remark to customer and logs it in `lead_activities` as `follow_up_remark_sent`.
 
-- `contacts`
-- `contact_identities`
-- `leads`
-- `lead_activities`
-- `follow_ups`
-- `webhook_events`
+## Notification Highlighting
+
+- Bell notifications now come from `webhook_events` for WhatsApp.
+- Highlighted alerts appear when:
+  - Webhook failed, or
+  - Auto follow-up could not be created and manual action is required.

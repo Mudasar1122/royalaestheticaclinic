@@ -81,7 +81,11 @@
                                     </div>
                                     <div class="mb-4">
                                         <label class="form-label">Email</label>
-                                        <input type="email" name="email" class="form-control rounded-lg" value="{{ old('email', $user->email) }}" required>
+                                        <input type="email" class="form-control rounded-lg bg-neutral-100 dark:bg-neutral-600" value="{{ $user->email }}" readonly>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="form-label">Role</label>
+                                        <input type="text" class="form-control rounded-lg bg-neutral-100 dark:bg-neutral-600" value="{{ ucfirst($user->role) }}" readonly>
                                     </div>
                                     <div class="mb-4">
                                         <label class="form-label">Phone</label>
@@ -91,6 +95,7 @@
                                         <label class="form-label">Profile Photo</label>
                                         <input type="file" name="profile_photo" class="form-control rounded-lg" accept=".png,.jpg,.jpeg">
                                     </div>
+                                    <p class="text-xs text-secondary-light mb-5">Email and role are controlled by admin and cannot be changed here.</p>
                                     <button type="submit" class="btn btn-primary px-6 py-3 rounded-lg">Save Profile</button>
                                 </form>
                             </div>

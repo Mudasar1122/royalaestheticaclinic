@@ -3,6 +3,8 @@
 @php
     $title = 'CRM';
     $subTitle = 'Leads';
+    $canManageFollowups = auth()->user()?->hasModulePermission('lead_management', 'manage_followups') ?? false;
+    $canMarkBooked = auth()->user()?->hasModulePermission('lead_management', 'mark_booked') ?? false;
 
     $stageBadgeClasses = [
         'new' => 'bg-warning-100 dark:bg-warning-600/20 text-warning-600 dark:text-warning-300',
@@ -21,42 +23,69 @@
 
     $readableStage = static function (string $stage) use ($normalizeStage, $stages): string {
         $normalized = $normalizeStage($stage);
+
         return $stages[$normalized] ?? ucfirst(str_replace('_', ' ', $normalized));
     };
 @endphp
 
 @section('content')
-    <div class="card border-0">
-        <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 p-4">
-            <div class="mb-3" style="display:flex; flex-wrap:wrap; gap:8px;">
-                @foreach ($leadTabs as $tabKey => $tabConfig)
-                    @php
-                        $tabQuery = array_filter(
-                            [
-                                'tab' => $tabKey,
-                                'search' => $filters['search'] !== '' ? $filters['search'] : null,
-                                'source' => $filters['source'] !== '' ? $filters['source'] : null,
-                                'status' => $filters['status'] !== '' ? $filters['status'] : null,
-                            ],
-                            static fn ($value) => $value !== null && $value !== ''
-                        );
-                    @endphp
-                    <a
-                        href="{{ route('clinicLeads', $tabQuery) }}"
-                        class="rounded-lg border px-3 py-2 text-sm font-medium"
-                        style="{{ $activeTab === $tabKey ? 'border-color:#c88a00; background:#fff7e6; color:#b77900;' : 'border-color:#d4d7dd; color:#4b5563; background:#fff;' }}"
-                    >
-                        {{ $tabConfig['label'] }} ({{ number_format($tabCounts[$tabKey] ?? 0) }})
-                    </a>
-                @endforeach
-            </div>
+    @if (session('status'))
+        <div class="alert alert-success px-4 py-3 rounded-lg mb-4">
+            {{ session('status') }}
+        </div>
+    @endif
 
-            <form method="GET" action="{{ route('clinicLeads') }}" class="w-100" style="display:grid; grid-template-columns:minmax(260px,1fr) 220px 200px auto; gap:12px; align-items:end;">
-                <input type="hidden" name="tab" value="{{ $activeTab }}">
-                <div style="min-width:0;">
-                    <input type="text" name="search" value="{{ $filters['search'] }}" class="form-control rounded-lg" placeholder="Search name, phone, email">
+    @if ($errors->has('whatsapp'))
+        <div class="alert alert-danger px-4 py-3 rounded-lg mb-4">
+            {{ $errors->first('whatsapp') }}
+        </div>
+    @endif
+
+    <div class="followup-tab-wrap mb-6">
+        @foreach ($leadTabs as $tabKey => $tabConfig)
+            @php
+                $tabQuery = array_filter(
+                    [
+                        'tab' => $tabKey,
+                        'search' => $filters['search'] !== '' ? $filters['search'] : null,
+                        'source' => $filters['source'] !== '' ? $filters['source'] : null,
+                        'status' => $filters['status'] !== '' ? $filters['status'] : null,
+                    ],
+                    static fn ($value) => $value !== null && $value !== ''
+                );
+            @endphp
+            <a
+                href="{{ route('clinicLeads', $tabQuery) }}"
+                class="followup-tab {{ $activeTab === $tabKey ? 'active' : '' }}"
+            >
+                <div class="followup-tab__content">
+                    <span class="followup-tab__label">{{ $tabConfig['label'] }}</span>
+                    <span class="followup-tab__badge">{{ number_format((int) ($tabCounts[$tabKey] ?? 0)) }}</span>
                 </div>
-                <div style="width:220px;">
+            </a>
+        @endforeach
+    </div>
+
+    <div class="card border-0 followup-grid-card">
+        <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700">
+            <h6 class="mb-0 font-semibold text-lg">Leads</h6>
+        </div>
+
+        <div class="lead-filter-wrap">
+            <form method="GET" action="{{ route('clinicLeads') }}" class="lead-filter-form">
+                <input type="hidden" name="tab" value="{{ $activeTab }}">
+
+                <div class="lead-filter-form__field lead-filter-form__search">
+                    <input
+                        type="text"
+                        name="search"
+                        value="{{ $filters['search'] }}"
+                        class="form-control rounded-lg"
+                        placeholder="Search name, phone, email"
+                    >
+                </div>
+
+                <div class="lead-filter-form__field lead-filter-form__source">
                     <select name="source" class="form-select rounded-lg">
                         <option value="">All Sources</option>
                         @foreach ($sources as $sourceKey => $sourceLabel)
@@ -64,121 +93,142 @@
                         @endforeach
                     </select>
                 </div>
-                <div style="width:200px;">
+
+                <div class="lead-filter-form__field lead-filter-form__status">
                     <select name="status" class="form-select rounded-lg">
                         <option value="">All Status</option>
                         <option value="open" @selected($filters['status'] === 'open')>Open</option>
                         <option value="closed" @selected($filters['status'] === 'closed')>Closed</option>
                     </select>
                 </div>
-                <div style="white-space:nowrap;">
-                    <div style="display:flex; gap:8px; flex-wrap:nowrap;">
-                        <button type="submit" class="btn btn-primary text-sm btn-sm px-3 py-2 rounded-lg">Apply Filter</button>
-                        <a href="{{ route('clinicLeads', ['tab' => $activeTab]) }}" class="btn btn-primary text-sm btn-sm px-3 py-2 rounded-lg">Reset</a>
-                    </div>
+
+                <div class="lead-filter-form__actions">
+                    <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg text-sm">Apply Filter</button>
+                    <a href="{{ route('clinicLeads', ['tab' => $activeTab]) }}" class="btn btn-outline-primary-600 px-4 py-2 rounded-lg text-sm">Reset</a>
                 </div>
             </form>
         </div>
+
         <div class="card-body p-0">
-            <div>
-                <table class="table bordered-table mb-0">
+            <div class="table-responsive scroll-sm">
+                <table id="clinic-leads-table" class="table bordered-table mb-0">
                     <thead>
                         <tr>
-                            <th>Lead</th>
-                            <th>Source</th>
+                            <th>Name</th>
+                            <th>Phone No</th>
+                            <th>Procedure of Interest</th>
                             <th>Stage</th>
-                            <th>Next Follow-up</th>
-                            <th>Status</th>
+                            <th>Last Follow-up</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($leads as $lead)
                             @php
-                                $nextFollowUp = $lead->followUps->first();
                                 $normalizedStage = $normalizeStage((string) $lead->stage);
                                 $stageLabel = $readableStage((string) $lead->stage);
+
+                                $procedureKeys = collect(data_get($lead->meta, 'procedures_of_interest', []))
+                                    ->map(static fn ($value): string => (string) $value)
+                                    ->filter(static fn (string $value): bool => $value !== '')
+                                    ->unique()
+                                    ->values()
+                                    ->all();
+
+                                $procedureLabels = collect($procedureKeys)
+                                    ->map(function (string $procedureKey) use ($procedureOptions, $lead): string {
+                                        if ($procedureKey === 'other') {
+                                            $otherValue = trim((string) data_get($lead->meta, 'procedure_other', ''));
+
+                                            return $otherValue !== '' ? 'Other: '.$otherValue : 'Other';
+                                        }
+
+                                        return $procedureOptions[$procedureKey] ?? ucfirst(str_replace('_', ' ', $procedureKey));
+                                    })
+                                    ->filter(static fn (string $value): bool => trim($value) !== '')
+                                    ->values()
+                                    ->all();
                             @endphp
                             <tr>
                                 <td>
-                                    <div class="flex flex-col">
+                                    @if ($canManageFollowups)
+                                        <a href="{{ route('clinicLeadFollowUp', $lead) }}" class="font-medium text-neutral-700 dark:text-neutral-100 hover:text-primary-600">
+                                            {{ $lead->contact?->full_name ?? 'Unnamed Lead' }}
+                                        </a>
+                                    @else
                                         <span class="font-medium text-neutral-700 dark:text-neutral-100">{{ $lead->contact?->full_name ?? 'Unnamed Lead' }}</span>
-                                        <span class="text-xs text-secondary-light">{{ $lead->contact?->phone ?? $lead->contact?->email ?? 'No contact info' }}</span>
-                                    </div>
+                                    @endif
                                 </td>
-                                <td>{{ ucfirst(str_replace('_', ' ', $lead->source_platform)) }}</td>
+                                <td>{{ $lead->contact?->phone ?? '-' }}</td>
+                                <td>
+                                    @if (!empty($procedureLabels))
+                                        <ul class="procedure-stack">
+                                            @foreach ($procedureLabels as $procedureLabel)
+                                                <li>{{ $procedureLabel }}</li>
+                                            @endforeach
+                                        </ul>
+                                    @else
+                                        <span class="text-sm text-secondary-light">Not selected</span>
+                                    @endif
+                                </td>
                                 <td>
                                     <span class="px-3 py-1 rounded-full text-xs font-semibold {{ $stageBadgeClasses[$normalizedStage] ?? 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200' }}">
                                         {{ $stageLabel }}
                                     </span>
                                 </td>
                                 <td>
-                                    @if ($nextFollowUp)
-                                        <span class="{{ $nextFollowUp->due_at < now() ? 'text-danger-600 font-medium' : '' }}">
-                                            {{ $nextFollowUp->due_at?->format('d M Y h:i A') }}
-                                        </span>
+                                    @if ($lead->last_follow_up_at)
+                                        {{ \Illuminate\Support\Carbon::parse((string) $lead->last_follow_up_at)->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
                                     @else
-                                        <span class="text-secondary-light">No pending follow-up</span>
+                                        -
                                     @endif
                                 </td>
-                                <td>
-                                    <span class="px-3 py-1 rounded-full text-xs font-semibold {{ $lead->status === 'open' ? 'bg-success-100 dark:bg-success-600/25 text-success-700 dark:text-success-300' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200' }}">
-                                        {{ ucfirst($lead->status) }}
-                                    </span>
-                                </td>
                                 <td class="text-center">
-                                    <div class="relative inline-block text-left" data-action-dropdown style="position: relative; display: inline-block; z-index: 20;">
-                                        <button
-                                            type="button"
-                                            class="btn btn-outline-primary-600 px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1"
-                                            data-action-dropdown-button
-                                            aria-expanded="false"
-                                            aria-controls="lead-action-menu-{{ $lead->id }}"
-                                        >
-                                            Action
-                                            <iconify-icon icon="heroicons:chevron-down-20-solid" class="text-sm"></iconify-icon>
-                                        </button>
-                                        <div
-                                            id="lead-action-menu-{{ $lead->id }}"
-                                            class="hidden absolute right-0 mt-2 rounded-xl border border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 shadow-lg p-2"
-                                            style="top: calc(100% + 8px); width: 250px; max-height: 320px; overflow-y: auto; z-index: 9999;"
-                                            data-action-dropdown-menu
-                                        >
+                                    @php
+                                        $showAddFollowUp = $canManageFollowups;
+                                        $showMarkBooked = $canMarkBooked && $normalizedStage !== 'booked';
+                                    @endphp
+                                    @if ($showAddFollowUp || $showMarkBooked)
+                                        <div class="followup-action-dropdown" data-action-dropdown>
                                             <button
                                                 type="button"
-                                                class="w-full text-start rounded text-secondary-light hover:bg-neutral-200 text-hover-neutral-900"
-                                                style="padding: 8px 12px; font-size: 15px;"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#followUpModal-{{ $lead->id }}"
-                                                data-action-menu-close
+                                                class="followup-action-btn btn btn-outline-primary-600 px-3 py-2 rounded-lg text-xs font-medium inline-flex items-center gap-1"
+                                                data-action-dropdown-button
+                                                aria-expanded="false"
+                                                aria-controls="lead-action-menu-{{ $lead->id }}"
                                             >
-                                                Add Follow-up
+                                                Action
+                                                <iconify-icon icon="heroicons:chevron-down-20-solid" class="text-sm"></iconify-icon>
                                             </button>
-                                            <button
-                                                type="button"
-                                                class="w-full text-start rounded text-secondary-light hover:bg-neutral-200 text-hover-neutral-900"
-                                                style="padding: 8px 12px; font-size: 15px;"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#editLeadModal-{{ $lead->id }}"
-                                                data-action-menu-close
+                                            <div
+                                                id="lead-action-menu-{{ $lead->id }}"
+                                                class="followup-action-menu hidden absolute right-0 mt-2 rounded-xl border border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 shadow-lg p-2"
+                                                data-action-dropdown-menu
                                             >
-                                                Edit Lead
-                                            </button>
-                                            <hr class="my-2 border-neutral-200 dark:border-neutral-600">
-                                            @foreach ($stages as $stageKey => $stageOptionLabel)
-                                                @if ($stageKey !== $normalizedStage)
-                                                    <form action="{{ route('clinicLeadStageUpdate', $lead) }}" method="POST">
-                                                        @csrf
-                                                        @method('PATCH')
-                                                        <input type="hidden" name="stage" value="{{ $stageKey }}">
-                                                        <button type="submit" class="w-full text-start rounded text-secondary-light hover:bg-neutral-200 text-hover-neutral-900" style="padding: 8px 12px; font-size: 15px;" data-action-menu-close>
-                                                            {{ $stageKey === 'booked' ? 'Mark as Booked (Close)' : 'Move to '.$stageOptionLabel }}
-                                                        </button>
-                                                    </form>
+                                                @if ($showAddFollowUp)
+                                                    <a
+                                                        href="{{ route('clinicLeadFollowUp', $lead) }}"
+                                                        class="followup-action-item"
+                                                        data-action-menu-close
+                                                    >
+                                                        Add Follow-up
+                                                    </a>
                                                 @endif
-                                            @endforeach
+                                                @if ($showMarkBooked)
+                                                <form action="{{ route('clinicLeadStageUpdate', $lead) }}" method="POST" class="followup-action-form">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="stage" value="booked">
+                                                    <button type="submit" class="followup-action-item" data-action-menu-close>
+                                                        Mark as Booked
+                                                    </button>
+                                                </form>
+                                                @endif
+                                            </div>
                                         </div>
-                                    </div>
+                                    @else
+                                        <span class="text-secondary-light">-</span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
@@ -190,39 +240,41 @@
                 </table>
             </div>
         </div>
-        <div class="card-footer border-t border-neutral-200 dark:border-neutral-600">
-            {{ $leads->links() }}
-        </div>
+
     </div>
 
     @foreach ($leads as $lead)
-        @php
-            $normalizedStage = $normalizeStage((string) $lead->stage);
-        @endphp
-        <div class="modal fade" id="followUpModal-{{ $lead->id }}" tabindex="-1" aria-hidden="true" style="display: none;">
+        <div class="modal fade" id="whatsAppModal-{{ $lead->id }}" tabindex="-1" aria-hidden="true" style="display: none;">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                    <form action="{{ route('clinicLeadStageUpdate', $lead) }}" method="POST">
+                    <form action="{{ route('clinicLeadWhatsAppSend', $lead) }}" method="POST">
                         @csrf
-                        @method('PATCH')
-                        <input type="hidden" name="stage" value="{{ $normalizedStage }}">
                         <div class="modal-header">
-                            <h6 class="modal-title">Add Follow-up</h6>
+                            <h6 class="modal-title">Send WhatsApp Message</h6>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label class="form-label">Due Date & Time</label>
-                                <input type="datetime-local" name="follow_up_due_at" class="form-control rounded-lg" required>
+                                <label class="form-label">Recipient</label>
+                                <input
+                                    type="text"
+                                    class="form-control rounded-lg"
+                                    value="{{ $lead->contact?->phone ?? 'No phone on lead contact' }}"
+                                    disabled
+                                >
+                                <p class="text-xs text-secondary-light mt-1 mb-0">If a WhatsApp identity exists, it will be used automatically.</p>
                             </div>
-                            <div>
-                                <label class="form-label">Summary</label>
-                                <input type="text" name="follow_up_summary" class="form-control rounded-lg" maxlength="255" placeholder="Follow-up summary" required>
+                            <div class="mb-3">
+                                <label class="form-label">Message</label>
+                                <textarea name="message" class="form-control rounded-lg" rows="4" maxlength="4096" required>{{ old('message') }}</textarea>
                             </div>
+                            <p class="text-xs text-secondary-light mb-0">
+                                Message will be sent via Twilio WhatsApp.
+                            </p>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-light px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Save Follow-up</button>
+                            <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Send Message</button>
                         </div>
                     </form>
                 </div>
@@ -264,8 +316,8 @@
                                 <div class="col-span-12 md:col-span-6">
                                     <label class="form-label">Stage</label>
                                     <select name="stage" class="form-select rounded-lg" required>
-                                        @foreach ($stages as $stageKey => $stageLabel)
-                                            <option value="{{ $stageKey }}" @selected($normalizeStage((string) $lead->stage) === $stageKey)>{{ $stageLabel }}</option>
+                                        @foreach ($stages as $stageKey => $stageText)
+                                            <option value="{{ $stageKey }}" @selected($normalizeStage((string) $lead->stage) === $stageKey)>{{ $stageText }}</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -297,73 +349,395 @@
         </div>
     @endforeach
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const dropdowns = document.querySelectorAll('[data-action-dropdown]');
+    <style>
+        .followup-tab-wrap {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0;
+            border: 1px solid #d4d7dd;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #fff;
+            -webkit-overflow-scrolling: touch;
+        }
 
-            if (!dropdowns.length) {
-                return;
+        .followup-tab {
+            border-right: 1px solid #d4d7dd;
+            flex: 1 1 0;
+            min-width: 0;
+            min-height: 66px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            text-decoration: none;
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .followup-tab:last-child {
+            border-right: 0;
+        }
+
+        .followup-tab.active {
+            background: rgb(var(--ra-primary-rgb, 190 133 0) / 0.12);
+            box-shadow: inset 0 3px 0 rgb(var(--ra-primary-rgb, 190 133 0));
+        }
+
+        .followup-tab__content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px 12px;
+            text-align: center;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .followup-tab__label {
+            font-size: 1rem;
+            color: #344054;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .followup-tab.active .followup-tab__label {
+            color: rgb(var(--ra-primary-rgb, 190 133 0));
+        }
+
+        .followup-tab__badge {
+            font-size: 0.8rem;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 4px 10px;
+            line-height: 1;
+            background: rgb(var(--ra-primary-rgb, 190 133 0) / 0.12);
+            color: rgb(var(--ra-primary-rgb, 190 133 0));
+        }
+
+        .followup-tab.active .followup-tab__badge {
+            background: rgb(var(--ra-primary-rgb, 190 133 0));
+            color: #fff;
+        }
+
+        .lead-filter-wrap {
+            border-top: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px;
+            background: #fff;
+        }
+
+        .lead-filter-form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(170px, 220px) minmax(150px, 180px) auto;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .lead-filter-form__actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .followup-grid-card .datatable-wrapper .datatable-top {
+            padding: 12px 16px;
+            border-top: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 0;
+        }
+
+        .followup-grid-card .datatable-wrapper .datatable-bottom {
+            padding: 12px 16px;
+            border-top: 1px solid #e5e7eb;
+            margin-top: 0;
+        }
+
+        .followup-grid-card .datatable-wrapper .datatable-search .datatable-input {
+            border: 1px solid #d4d7dd;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .followup-grid-card .datatable-wrapper .datatable-search .datatable-input:focus {
+            border-color: rgb(var(--ra-primary-rgb, 190 133 0));
+            box-shadow: none;
+        }
+
+        #clinic-leads-table {
+            width: 100%;
+        }
+
+        .followup-grid-card .table {
+            min-width: 100% !important;
+            table-layout: fixed;
+        }
+
+        #clinic-leads-table th,
+        #clinic-leads-table td {
+            white-space: normal !important;
+            word-break: break-word !important;
+            vertical-align: top;
+        }
+
+        #clinic-leads-table th:nth-child(1),
+        #clinic-leads-table td:nth-child(1) {
+            width: 18%;
+        }
+
+        #clinic-leads-table th:nth-child(2),
+        #clinic-leads-table td:nth-child(2) {
+            width: 14%;
+        }
+
+        #clinic-leads-table th:nth-child(3),
+        #clinic-leads-table td:nth-child(3) {
+            width: 28%;
+            text-align: left;
+        }
+
+        #clinic-leads-table th:nth-child(4),
+        #clinic-leads-table td:nth-child(4) {
+            width: 12%;
+        }
+
+        #clinic-leads-table th:nth-child(5),
+        #clinic-leads-table td:nth-child(5) {
+            width: 18%;
+        }
+
+        #clinic-leads-table th:nth-child(6),
+        #clinic-leads-table td:nth-child(6) {
+            width: 10%;
+            white-space: nowrap !important;
+        }
+
+        .procedure-stack {
+            margin: 0;
+            padding-left: 0;
+            list-style: none;
+            display: grid;
+            gap: 4px;
+        }
+
+        .procedure-stack li {
+            font-size: 0.88rem;
+            color: #344054;
+            line-height: 1.35;
+            position: relative;
+            padding-left: 12px;
+        }
+
+        .procedure-stack li::before {
+            content: '\2022';
+            position: absolute;
+            left: 0;
+            color: #475467;
+        }
+
+        .followup-action-dropdown {
+            position: relative;
+            display: inline-block;
+            z-index: 1;
+        }
+
+        .followup-action-dropdown.is-open {
+            z-index: 2500;
+        }
+
+        .followup-action-btn {
+            min-width: 96px;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        .followup-action-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            z-index: 2510;
+            min-width: 240px;
+            width: max-content !important;
+            max-height: 340px;
+            overflow-y: auto;
+            padding: 0.35rem;
+        }
+
+        .followup-action-menu.open-up {
+            top: auto;
+            bottom: calc(100% + 8px);
+        }
+
+        .followup-action-menu > * + * {
+            border-top: 1px solid #eef0f3;
+        }
+
+        .followup-action-form {
+            margin: 0;
+        }
+
+        .followup-action-item {
+            display: block;
+            width: 100%;
+            border: 0;
+            background: transparent;
+            text-align: left;
+            white-space: nowrap;
+            padding: 10px 12px;
+            font-size: 14px;
+            color: #475467;
+            border-radius: 8px;
+        }
+
+        .followup-action-item:hover {
+            background: #f2f4f7;
+            color: #101828;
+        }
+
+        @media (max-width: 1200px) {
+            .lead-filter-form {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 991px) {
+            .followup-tab {
+                flex: 0 0 220px;
             }
 
-            const closeAll = (except = null) => {
-                dropdowns.forEach((dropdown) => {
+            .followup-tab-wrap {
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+
+            .lead-filter-form {
+                grid-template-columns: 1fr;
+            }
+
+            .lead-filter-form__source,
+            .lead-filter-form__status {
+                width: 100%;
+            }
+
+            .lead-filter-form__actions {
+                flex-wrap: wrap;
+            }
+
+            .followup-grid-card .table-responsive {
+                overflow-x: auto;
+            }
+
+            .followup-grid-card .table {
+                min-width: 980px !important;
+            }
+        }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const table = document.getElementById('clinic-leads-table');
+
+            if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
+                new simpleDatatables.DataTable('#clinic-leads-table', {
+                    searchable: true,
+                    fixedHeight: false,
+                    perPage: 10,
+                    perPageSelect: [10, 25, 50, 100],
+                    columns: [
+                        { select: [5], sortable: false, searchable: false },
+                    ],
+                    labels: {
+                        placeholder: 'Search...',
+                        perPage: 'Rows per page',
+                        noRows: 'No leads found.',
+                        info: 'Showing {start} to {end} of {rows} entries',
+                    },
+                });
+            }
+
+            const getDropdowns = function () {
+                return Array.from(document.querySelectorAll('[data-action-dropdown]'));
+            };
+
+            const closeAll = function (except = null) {
+                getDropdowns().forEach((dropdown) => {
                     if (except && dropdown === except) {
                         return;
                     }
 
-                    const button = dropdown.querySelector('[data-action-dropdown-button]');
                     const menu = dropdown.querySelector('[data-action-dropdown-menu]');
+                    const button = dropdown.querySelector('[data-action-dropdown-button]');
 
                     if (menu) {
                         menu.classList.add('hidden');
+                        menu.classList.remove('open-up');
                     }
+
+                    dropdown.classList.remove('is-open');
 
                     if (button) {
                         button.setAttribute('aria-expanded', 'false');
                     }
-
-                    dropdown.style.zIndex = '20';
                 });
             };
 
-            dropdowns.forEach((dropdown) => {
-                const button = dropdown.querySelector('[data-action-dropdown-button]');
-                const menu = dropdown.querySelector('[data-action-dropdown-menu]');
+            const placeMenu = function (button, menu) {
+                menu.classList.remove('open-up');
 
-                if (!button || !menu) {
-                    return;
+                const buttonRect = button.getBoundingClientRect();
+                const menuRect = menu.getBoundingClientRect();
+                const spaceBelow = window.innerHeight - buttonRect.bottom;
+                const spaceAbove = buttonRect.top;
+                const neededHeight = menuRect.height + 16;
+
+                if (spaceBelow < neededHeight && spaceAbove > neededHeight) {
+                    menu.classList.add('open-up');
                 }
-
-                button.addEventListener('click', function (event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-
-                    const shouldOpen = menu.classList.contains('hidden');
-                    closeAll(dropdown);
-
-                    if (shouldOpen) {
-                        menu.classList.remove('hidden');
-                        button.setAttribute('aria-expanded', 'true');
-                        dropdown.style.zIndex = '9999';
-                    } else {
-                        menu.classList.add('hidden');
-                        button.setAttribute('aria-expanded', 'false');
-                        dropdown.style.zIndex = '20';
-                    }
-                });
-
-                dropdown.querySelectorAll('[data-action-menu-close]').forEach((menuItem) => {
-                    menuItem.addEventListener('click', function () {
-                        menu.classList.add('hidden');
-                        button.setAttribute('aria-expanded', 'false');
-                    });
-                });
-            });
+            };
 
             document.addEventListener('click', function (event) {
                 const target = event.target;
 
                 if (!(target instanceof Element)) {
+                    return;
+                }
+
+                const button = target.closest('[data-action-dropdown-button]');
+
+                if (button) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    const dropdown = button.closest('[data-action-dropdown]');
+                    const menu = dropdown ? dropdown.querySelector('[data-action-dropdown-menu]') : null;
+
+                    if (!dropdown || !menu) {
+                        return;
+                    }
+
+                    const shouldOpen = menu.classList.contains('hidden');
+                    closeAll(dropdown);
+
+                    if (shouldOpen) {
+                        dropdown.classList.add('is-open');
+                        menu.classList.remove('hidden');
+                        placeMenu(button, menu);
+                        button.setAttribute('aria-expanded', 'true');
+                    } else {
+                        menu.classList.add('hidden');
+                        menu.classList.remove('open-up');
+                        dropdown.classList.remove('is-open');
+                        button.setAttribute('aria-expanded', 'false');
+                    }
+
+                    return;
+                }
+
+                if (target.closest('[data-action-menu-close]')) {
+                    closeAll();
                     return;
                 }
 
@@ -377,7 +751,14 @@
                     closeAll();
                 }
             });
+
+            window.addEventListener('resize', function () {
+                closeAll();
+            });
+
+            window.addEventListener('scroll', function () {
+                closeAll();
+            }, true);
         });
     </script>
-
 @endsection
