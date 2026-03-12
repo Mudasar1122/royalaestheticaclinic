@@ -350,7 +350,7 @@
                                 </select>
                             </div>
                             <div class="col-span-12 flex items-center justify-center gap-3 mt-6">
-                                <button type="reset" class="border border-danger-600 bg-hover-danger-200 text-danger-600 text-base px-[50px] py-[11px] rounded-lg">
+                                <button type="reset" class="btn btn-cancel text-base px-[50px] py-[11px] rounded-lg">
                                     Cancel
                                 </button>
                                 <button type="submit" class="btn btn-primary border border-primary-600 text-base px-[50px] py-3 rounded-lg">

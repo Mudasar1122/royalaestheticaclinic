@@ -8,12 +8,6 @@
 @endphp
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
-            {{ session('status') }}
-        </div>
-    @endif
-
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-6">
         <div class="card shadow-none border border-gray-200 dark:border-neutral-600 rounded-lg h-full">
             <div class="card-body p-5">

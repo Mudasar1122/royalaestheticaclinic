@@ -93,10 +93,15 @@ class User extends Authenticatable
         }
 
         $permissionMap = is_array($this->module_permissions) ? $this->module_permissions : [];
-        $modulePermissions = $permissionMap[$module] ?? [];
 
-        if (!is_array($modulePermissions) || $modulePermissions === []) {
+        if (!array_key_exists($module, $permissionMap)) {
             // Backward compatibility for users created before operation-level permissions.
+            return true;
+        }
+
+        $modulePermissions = $permissionMap[$module];
+
+        if (!is_array($modulePermissions)) {
             return true;
         }
 

@@ -22,15 +22,19 @@
             'icon' => 'heroicons:clock',
         ],
     ];
+
+    $formatPhone = static function ($contact): string {
+        $phone = trim((string) ($contact?->phone ?? ''));
+
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        return '-';
+    };
 @endphp
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-4">
-            {{ session('status') }}
-        </div>
-    @endif
-
     @if ($errors->has('whatsapp'))
         <div class="alert alert-danger px-4 py-3 rounded-lg mb-4">
             {{ $errors->first('whatsapp') }}
@@ -121,9 +125,7 @@
                                         {{ $lead->contact?->full_name ?? 'Unnamed Lead' }}
                                     </a>
                                 </td>
-                                <td>
-                                    {{ $lead->contact?->phone ?? '-' }}
-                                </td>
+                                <td>{{ $formatPhone($lead->contact) }}</td>
                                 <td>
                                     @if (!empty($procedureLabels))
                                         <ul class="procedure-stack">
@@ -149,9 +151,10 @@
                                 </td>
                                 <td class="text-center">
                                     @php
+                                        $showAddFollowUp = true;
                                         $showMarkBooked = $canMarkBooked && $normalizedStage !== 'booked';
                                     @endphp
-                                    @if ($showMarkBooked)
+                                    @if ($showAddFollowUp || $showMarkBooked)
                                         <div class="followup-action-dropdown" data-action-dropdown>
                                             <button
                                                 type="button"
@@ -166,18 +169,29 @@
                                                 class="followup-action-menu hidden absolute right-0 mt-2 rounded-xl border border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 shadow-lg p-2"
                                                 data-action-dropdown-menu
                                             >
-                                                <form action="{{ route('clinicLeadStageUpdate', $lead) }}" method="POST" class="followup-action-form">
-                                                    @csrf
-                                                    @method('PATCH')
-                                                    <input type="hidden" name="stage" value="booked">
-                                                    <button
-                                                        type="submit"
+                                                @if ($showAddFollowUp)
+                                                    <a
+                                                        href="{{ route('clinicLeadFollowUp', $lead) }}"
                                                         class="followup-action-item"
                                                         data-action-menu-close
                                                     >
-                                                        Mark as Booked
-                                                    </button>
-                                                </form>
+                                                        Add Follow-up
+                                                    </a>
+                                                @endif
+                                                @if ($showMarkBooked)
+                                                    <form action="{{ route('clinicLeadStageUpdate', $lead) }}" method="POST" class="followup-action-form">
+                                                        @csrf
+                                                        @method('PATCH')
+                                                        <input type="hidden" name="stage" value="booked">
+                                                        <button
+                                                            type="submit"
+                                                            class="followup-action-item"
+                                                            data-action-menu-close
+                                                        >
+                                                            Mark as Booked
+                                                        </button>
+                                                    </form>
+                                                @endif
                                             </div>
                                         </div>
                                     @else
@@ -323,6 +337,7 @@
         #followup-grid-table td:nth-child(2) {
             width: 14%;
             min-width: 165px;
+            white-space: nowrap;
         }
 
         #followup-grid-table th:nth-child(3),
@@ -503,7 +518,11 @@
 
                     if (menu) {
                         menu.classList.add('hidden');
-                        menu.classList.remove('open-up');
+                        if (window.royalUi && typeof window.royalUi.resetActionDropdown === 'function') {
+                            window.royalUi.resetActionDropdown(menu);
+                        } else {
+                            menu.classList.remove('open-up');
+                        }
                     }
 
                     dropdown.classList.remove('is-open');
@@ -515,16 +534,9 @@
             };
 
             const placeMenu = function (button, menu) {
-                menu.classList.remove('open-up');
-
-                const buttonRect = button.getBoundingClientRect();
-                const menuRect = menu.getBoundingClientRect();
-                const spaceBelow = window.innerHeight - buttonRect.bottom;
-                const spaceAbove = buttonRect.top;
-                const neededHeight = menuRect.height + 16;
-
-                if (spaceBelow < neededHeight && spaceAbove > neededHeight) {
-                    menu.classList.add('open-up');
+                if (window.royalUi && typeof window.royalUi.placeActionDropdown === 'function') {
+                    window.royalUi.placeActionDropdown(button, menu);
+                    return;
                 }
             };
 
@@ -558,7 +570,11 @@
                         button.setAttribute('aria-expanded', 'true');
                     } else {
                         menu.classList.add('hidden');
-                        menu.classList.remove('open-up');
+                        if (window.royalUi && typeof window.royalUi.resetActionDropdown === 'function') {
+                            window.royalUi.resetActionDropdown(menu);
+                        } else {
+                            menu.classList.remove('open-up');
+                        }
                         dropdown.classList.remove('is-open');
                         button.setAttribute('aria-expanded', 'false');
                     }

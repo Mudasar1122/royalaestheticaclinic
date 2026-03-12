@@ -26,15 +26,22 @@
 
         return $stages[$normalized] ?? ucfirst(str_replace('_', ' ', $normalized));
     };
+    $readableSource = static function (string $source) use ($sources): string {
+        return $sources[$source] ?? ucfirst(str_replace('_', ' ', $source));
+    };
+
+    $formatPhoneOnly = static function ($contact): string {
+        $phone = trim((string) ($contact?->phone ?? ''));
+
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        return '-';
+    };
 @endphp
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-4">
-            {{ session('status') }}
-        </div>
-    @endif
-
     @if ($errors->has('whatsapp'))
         <div class="alert alert-danger px-4 py-3 rounded-lg mb-4">
             {{ $errors->first('whatsapp') }}
@@ -116,6 +123,8 @@
                         <tr>
                             <th>Name</th>
                             <th>Phone No</th>
+                            <th>Source</th>
+                            <th>Created At</th>
                             <th>Procedure of Interest</th>
                             <th>Stage</th>
                             <th>Last Follow-up</th>
@@ -159,7 +168,15 @@
                                         <span class="font-medium text-neutral-700 dark:text-neutral-100">{{ $lead->contact?->full_name ?? 'Unnamed Lead' }}</span>
                                     @endif
                                 </td>
-                                <td>{{ $lead->contact?->phone ?? '-' }}</td>
+                                <td>{{ $formatPhoneOnly($lead->contact) }}</td>
+                                <td>{{ $readableSource((string) $lead->source_platform) }}</td>
+                                <td>
+                                    @if ($lead->created_at)
+                                        {{ $lead->created_at->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
+                                    @else
+                                        -
+                                    @endif
+                                </td>
                                 <td>
                                     @if (!empty($procedureLabels))
                                         <ul class="procedure-stack">
@@ -233,7 +250,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center py-10 text-secondary-light">No leads found.</td>
+                                <td colspan="8" class="text-center py-10 text-secondary-light">No leads found.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -273,7 +290,7 @@
                             </p>
                         </div>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-light px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-cancel px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
                             <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Send Message</button>
                         </div>
                     </form>
@@ -296,6 +313,24 @@
                                 <div class="col-span-12 md:col-span-6">
                                     <label class="form-label">Full Name</label>
                                     <input type="text" name="full_name" value="{{ $lead->contact?->full_name }}" class="form-control rounded-lg" required>
+                                </div>
+                                <div class="col-span-12 md:col-span-6">
+                                    <label class="form-label">Gender</label>
+                                    <div class="gender-choice-group">
+                                        @foreach ($genderOptions as $genderKey => $genderLabel)
+                                            <label class="gender-choice-option">
+                                                <input
+                                                    type="radio"
+                                                    name="gender"
+                                                    value="{{ $genderKey }}"
+                                                    class="gender-choice-option__input"
+                                                    @checked(($lead->contact?->gender ?? 'female') === $genderKey)
+                                                    required
+                                                >
+                                                <span class="gender-choice-option__label">{{ $genderLabel }}</span>
+                                            </label>
+                                        @endforeach
+                                    </div>
                                 </div>
                                 <div class="col-span-12 md:col-span-6">
                                     <label class="form-label">Phone</label>
@@ -340,7 +375,7 @@
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-light px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-cancel px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
                             <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Update Lead</button>
                         </div>
                     </form>
@@ -350,6 +385,33 @@
     @endforeach
 
     <style>
+        .gender-choice-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            min-height: 46px;
+            padding: 10px 12px;
+            border: 1px solid #d4d7dd;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        .gender-choice-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            cursor: pointer;
+            color: #111827;
+            font-size: 0.95rem;
+        }
+
+        .gender-choice-option__input {
+            width: 16px;
+            height: 16px;
+            accent-color: rgb(var(--ra-primary-rgb, 190 133 0));
+        }
+
         .followup-tab-wrap {
             display: flex;
             flex-wrap: nowrap;
@@ -485,33 +547,44 @@
 
         #clinic-leads-table th:nth-child(1),
         #clinic-leads-table td:nth-child(1) {
-            width: 18%;
+            width: 15%;
         }
 
         #clinic-leads-table th:nth-child(2),
         #clinic-leads-table td:nth-child(2) {
-            width: 14%;
+            width: 13%;
+            white-space: nowrap !important;
         }
 
         #clinic-leads-table th:nth-child(3),
         #clinic-leads-table td:nth-child(3) {
-            width: 28%;
-            text-align: left;
+            width: 11%;
         }
 
         #clinic-leads-table th:nth-child(4),
         #clinic-leads-table td:nth-child(4) {
-            width: 12%;
+            width: 13%;
         }
 
         #clinic-leads-table th:nth-child(5),
         #clinic-leads-table td:nth-child(5) {
-            width: 18%;
+            width: 22%;
+            text-align: left;
         }
 
         #clinic-leads-table th:nth-child(6),
         #clinic-leads-table td:nth-child(6) {
+            width: 8%;
+        }
+
+        #clinic-leads-table th:nth-child(7),
+        #clinic-leads-table td:nth-child(7) {
             width: 10%;
+        }
+
+        #clinic-leads-table th:nth-child(8),
+        #clinic-leads-table td:nth-child(8) {
+            width: 8%;
             white-space: nowrap !important;
         }
 
@@ -673,7 +746,11 @@
 
                     if (menu) {
                         menu.classList.add('hidden');
-                        menu.classList.remove('open-up');
+                        if (window.royalUi && typeof window.royalUi.resetActionDropdown === 'function') {
+                            window.royalUi.resetActionDropdown(menu);
+                        } else {
+                            menu.classList.remove('open-up');
+                        }
                     }
 
                     dropdown.classList.remove('is-open');
@@ -685,16 +762,9 @@
             };
 
             const placeMenu = function (button, menu) {
-                menu.classList.remove('open-up');
-
-                const buttonRect = button.getBoundingClientRect();
-                const menuRect = menu.getBoundingClientRect();
-                const spaceBelow = window.innerHeight - buttonRect.bottom;
-                const spaceAbove = buttonRect.top;
-                const neededHeight = menuRect.height + 16;
-
-                if (spaceBelow < neededHeight && spaceAbove > neededHeight) {
-                    menu.classList.add('open-up');
+                if (window.royalUi && typeof window.royalUi.placeActionDropdown === 'function') {
+                    window.royalUi.placeActionDropdown(button, menu);
+                    return;
                 }
             };
 
@@ -728,7 +798,11 @@
                         button.setAttribute('aria-expanded', 'true');
                     } else {
                         menu.classList.add('hidden');
-                        menu.classList.remove('open-up');
+                        if (window.royalUi && typeof window.royalUi.resetActionDropdown === 'function') {
+                            window.royalUi.resetActionDropdown(menu);
+                        } else {
+                            menu.classList.remove('open-up');
+                        }
                         dropdown.classList.remove('is-open');
                         button.setAttribute('aria-expanded', 'false');
                     }

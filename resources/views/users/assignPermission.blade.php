@@ -7,12 +7,6 @@
 @endphp
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
-            {{ session('status') }}
-        </div>
-    @endif
-
     @if ($errors->any())
         <div class="alert alert-danger px-4 py-3 rounded-lg mb-6">
             {{ $errors->first() }}
@@ -92,7 +86,7 @@
                     </div>
 
                     <div class="flex items-center justify-end gap-3 mt-6">
-                        <a href="{{ route('usersList') }}" class="btn btn-light px-4 py-2 rounded-lg text-sm">Cancel</a>
+                        <a href="{{ route('usersList') }}" class="btn btn-cancel px-4 py-2 rounded-lg text-sm">Cancel</a>
                         <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg text-sm">Save Permissions</button>
                     </div>
                 </form>

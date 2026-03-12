@@ -30,6 +30,7 @@
     }
 
     $phoneLocalDefault = ltrim($oldPhoneDigits, '0');
+    $selectedGender = (string) old('gender', 'female');
 @endphp
 
 @section('content')
@@ -56,6 +57,28 @@
                                 required
                             >
                             @error('full_name')
+                                <p class="text-xs text-danger-600 mt-1 mb-0">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div class="col-span-12 md:col-span-6">
+                            <label class="form-label @error('gender') text-danger-600 @enderror">Gender <span class="text-danger-600">*</span></label>
+                            <div class="gender-choice-group @error('gender') gender-choice-group--error @enderror">
+                                @foreach ($genderOptions as $genderValue => $genderLabel)
+                                    <label class="gender-choice-option">
+                                        <input
+                                            type="radio"
+                                            name="gender"
+                                            value="{{ $genderValue }}"
+                                            class="gender-choice-option__input"
+                                            @checked($selectedGender === $genderValue)
+                                            required
+                                        >
+                                        <span class="gender-choice-option__label">{{ $genderLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            @error('gender')
                                 <p class="text-xs text-danger-600 mt-1 mb-0">{{ $message }}</p>
                             @enderror
                         </div>
@@ -198,7 +221,7 @@
 
                         <div class="col-span-12 flex flex-wrap gap-2 pt-1">
                             <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Create New Lead</button>
-                            <a href="{{ route('clinicLeads') }}" class="btn btn-light px-4 py-2 rounded-lg">Cancel</a>
+                            <a href="{{ route('clinicLeads') }}" class="btn btn-cancel px-4 py-2 rounded-lg">Cancel</a>
                         </div>
                     </form>
                 </div>
@@ -207,6 +230,37 @@
     </div>
 
     <style>
+        .gender-choice-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            min-height: 46px;
+            padding: 10px 12px;
+            border: 1px solid #d4d7dd;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        .gender-choice-group--error {
+            border-color: #ef4444;
+        }
+
+        .gender-choice-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            cursor: pointer;
+            color: #111827;
+            font-size: 0.95rem;
+        }
+
+        .gender-choice-option__input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--crm-primary-color, #465fff);
+        }
+
         .procedure-picker {
             position: relative;
         }
@@ -279,24 +333,8 @@
             border-color: var(--crm-primary-color, #465fff);
         }
 
-        .swal-theme-confirm-btn {
-            background: var(--crm-primary-color, #465fff) !important;
-            color: #fff !important;
-            border: 0 !important;
-            border-radius: 10px !important;
-            padding: 10px 24px !important;
-            min-width: 96px !important;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            line-height: 1.2 !important;
-        }
-
-        .swal-theme-confirm-btn:focus {
-            box-shadow: none !important;
-        }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const primaryButton = document.querySelector('.btn.btn-primary');
@@ -340,32 +378,6 @@
                 phoneLocal.addEventListener('input', syncPhone);
                 leadForm.addEventListener('submit', syncPhone);
                 syncPhone();
-            }
-
-            if (typeof window.Swal !== 'undefined') {
-                @if (session('status'))
-                    window.Swal.fire({
-                        icon: 'success',
-                        title: 'Lead created successfully.',
-                        iconColor: primaryColor,
-                        confirmButtonText: 'OK',
-                        buttonsStyling: false,
-                        customClass: {
-                            confirmButton: 'swal-theme-confirm-btn'
-                        }
-                    });
-                @elseif ($errors->any())
-                    window.Swal.fire({
-                        icon: 'error',
-                        title: 'Please check highlighted fields.',
-                        iconColor: primaryColor,
-                        confirmButtonText: 'OK',
-                        buttonsStyling: false,
-                        customClass: {
-                            confirmButton: 'swal-theme-confirm-btn'
-                        }
-                    });
-                @endif
             }
 
             const picker = document.querySelector('[data-procedure-picker]');

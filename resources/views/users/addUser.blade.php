@@ -12,12 +12,6 @@
         </div>
     @endif
 
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
-            {{ session('status') }}
-        </div>
-    @endif
-
     <div class="card h-full p-0 rounded-xl border-0 overflow-hidden">
         <div class="card-body p-6">
             <div class="grid grid-cols-1 lg:grid-cols-12 justify-center">
@@ -80,7 +74,7 @@
                                     </label>
                                 </div>
                                 <div class="flex items-center justify-center gap-3">
-                                    <a href="{{ route('usersList') }}" class="border border-danger-600 bg-hover-danger-200 text-danger-600 text-base px-14 py-[11px] rounded-lg">
+                                    <a href="{{ route('usersList') }}" class="btn btn-cancel text-base px-14 py-[11px] rounded-lg">
                                         Cancel
                                     </a>
                                     <button type="submit" class="btn btn-primary border border-primary-600 text-base px-14 py-3 rounded-lg">

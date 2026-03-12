@@ -97,7 +97,7 @@
 
         <div class="card-footer p-6 bg-white dark:bg-neutral-700 border border-b border-neutral-200 dark:border-neutral-600 border-end-0 border-start-0">
             <div class="flex items-center justify-center gap-3">
-                <button type="button" class="border border-danger-600 bg-hover-danger-200 text-danger-600 text-base px-[50px] py-[11px] rounded-lg">
+                <button type="button" class="btn btn-cancel text-base px-[50px] py-[11px] rounded-lg">
                     Cancel
                 </button>
                 <button type="button" class="btn btn-primary border border-primary-600 text-base px-7 py-3 rounded-lg">

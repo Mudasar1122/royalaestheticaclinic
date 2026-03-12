@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
@@ -125,8 +126,67 @@ class UsersController extends Controller
         ])->save();
 
         return redirect()
-            ->route('usersPermissionsEdit', $user)
+            ->route('usersList')
             ->with('status', 'Permissions updated successfully.');
+    }
+
+    public function impersonate(Request $request, User $user): RedirectResponse
+    {
+        $admin = $request->user();
+
+        if (!($admin?->isAdmin() ?? false)) {
+            abort(403, 'Only administrators can log in as another user.');
+        }
+
+        if ($user->isAdmin()) {
+            return back()->withErrors([
+                'impersonate' => 'You can only log in as non-admin users.',
+            ]);
+        }
+
+        if ($admin->is($user)) {
+            return back()->withErrors([
+                'impersonate' => 'You are already using this account.',
+            ]);
+        }
+
+        $request->session()->put('impersonator_id', $admin->id);
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        return redirect()
+            ->route('index')
+            ->with('status', 'Logged in as '.$user->name.'.');
+    }
+
+    public function stopImpersonation(Request $request): RedirectResponse
+    {
+        $impersonatorId = (int) $request->session()->get('impersonator_id', 0);
+
+        if ($impersonatorId <= 0) {
+            return redirect()->route('index');
+        }
+
+        $request->session()->forget('impersonator_id');
+
+        $admin = User::find($impersonatorId);
+
+        if ($admin === null || !$admin->isAdmin()) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()
+                ->route('signin')
+                ->withErrors(['email' => 'The original admin account could not be restored.']);
+        }
+
+        Auth::login($admin);
+        $request->session()->regenerate();
+
+        return redirect()
+            ->route('usersList')
+            ->with('status', 'Returned to admin account.');
     }
 
     public function editUser(User $user): View
@@ -364,9 +424,12 @@ class UsersController extends Controller
         foreach ($modules as $moduleKey) {
             $moduleName = (string) $moduleKey;
             $allowedOperations = array_keys($permissionOptions[$moduleName] ?? []);
-            $storedOperations = is_array($existingPermissions[$moduleName] ?? null) ? $existingPermissions[$moduleName] : [];
+            $hasStoredOperations = array_key_exists($moduleName, $existingPermissions);
+            $storedOperations = $hasStoredOperations && is_array($existingPermissions[$moduleName] ?? null)
+                ? $existingPermissions[$moduleName]
+                : null;
 
-            if ($storedOperations === []) {
+            if ($storedOperations === null) {
                 $resolved[$moduleName] = $allowedOperations;
                 continue;
             }
@@ -402,11 +465,12 @@ class UsersController extends Controller
         foreach ($allowedModules as $moduleKey) {
             $moduleName = (string) $moduleKey;
             $allowedOperations = array_keys($permissionOptions[$moduleName] ?? []);
-            $moduleStoredPermissions = is_array($storedPermissions[$moduleName] ?? null)
+            $hasStoredPermissions = array_key_exists($moduleName, $storedPermissions);
+            $moduleStoredPermissions = $hasStoredPermissions && is_array($storedPermissions[$moduleName] ?? null)
                 ? $storedPermissions[$moduleName]
-                : [];
+                : null;
 
-            if ($moduleStoredPermissions === []) {
+            if ($moduleStoredPermissions === null) {
                 $resolved[$moduleName] = $allowedOperations;
                 continue;
             }

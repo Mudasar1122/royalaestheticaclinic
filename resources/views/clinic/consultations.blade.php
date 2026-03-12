@@ -3,6 +3,22 @@
 @php
     $title = 'CRM';
     $subTitle = 'Activity Log';
+
+    $formatPhoneWithGender = static function ($contact): string {
+        $phone = trim((string) ($contact?->phone ?? ''));
+        $gender = trim((string) ($contact?->gender ?? ''));
+        $genderLabel = $gender !== '' ? ucfirst($gender) : '';
+
+        if ($phone !== '' && $genderLabel !== '') {
+            return $phone.' / '.$genderLabel;
+        }
+
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        return $genderLabel !== '' ? $genderLabel : '';
+    };
 @endphp
 
 @section('content')
@@ -29,7 +45,7 @@
                                 <td>
                                     <div class="flex flex-col">
                                         <span class="font-medium text-neutral-700 dark:text-neutral-100">{{ $activity->lead?->contact?->full_name ?? 'Unnamed Lead' }}</span>
-                                        <span class="text-xs text-secondary-light">{{ $activity->lead?->contact?->phone ?? $activity->lead?->contact?->email ?? 'No contact info' }}</span>
+                                        <span class="text-xs text-secondary-light">{{ $formatPhoneWithGender($activity->lead?->contact) !== '' ? $formatPhoneWithGender($activity->lead?->contact) : ($activity->lead?->contact?->email ?? 'No contact info') }}</span>
                                     </div>
                                 </td>
                                 <td>{{ ucfirst(str_replace('_', ' ', $activity->activity_type)) }}</td>

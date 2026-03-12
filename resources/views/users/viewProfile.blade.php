@@ -6,12 +6,6 @@
 @endphp
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
-            {{ session('status') }}
-        </div>
-    @endif
-
     @if (session('password_status'))
         <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
             {{ session('password_status') }}

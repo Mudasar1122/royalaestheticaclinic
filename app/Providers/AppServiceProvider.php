@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\FollowUp;
+use App\Models\Lead;
 use App\Models\WebhookEvent;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -23,11 +24,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         View::composer(['components.navbar', 'settings.notification'], function ($view): void {
-            $now = now('Asia/Karachi');
+            $pakistanNow = now('Asia/Karachi');
+            $now = $pakistanNow->copy()->utc();
             $reminderWindowEnd = $now->copy()->addHours(24);
 
             $followUpNotifications = FollowUp::query()
                 ->with(['lead.contact'])
+                ->whereHas('lead')
                 ->where('status', 'pending')
                 ->whereBetween('due_at', [$now, $reminderWindowEnd])
                 ->orderBy('due_at')
@@ -52,7 +55,9 @@ class AppServiceProvider extends ServiceProvider
                         'received_at' => $pakistanDueAt,
                         'is_highlighted' => true,
                         'lead_id' => $followUp->lead_id,
-                        'url' => route('clinicAppointments', ['tab' => $tab]),
+                        'url' => $followUp->lead_id !== null
+                            ? route('clinicLeadFollowUp', $followUp->lead_id)
+                            : route('clinicAppointments', ['tab' => $tab]),
                         'category' => 'follow_up',
                     ];
                 });
@@ -63,9 +68,18 @@ class AppServiceProvider extends ServiceProvider
                 ->latest('received_at')
                 ->limit(8)
                 ->get()
-                ->map(function (WebhookEvent $event): array {
+                ->map(function (WebhookEvent $event): ?array {
                     $payload = is_array($event->payload) ? $event->payload : [];
                     $crmPayload = is_array($payload['_crm'] ?? null) ? $payload['_crm'] : [];
+                    $leadId = !empty($crmPayload['lead_id']) ? (int) $crmPayload['lead_id'] : null;
+                    $activeLeadExists = $leadId !== null
+                        ? Lead::query()->whereKey($leadId)->exists()
+                        : false;
+
+                    if ($leadId !== null && !$activeLeadExists) {
+                        return null;
+                    }
+
                     $messageBody = trim((string) (
                         $payload['Body']
                         ?? data_get($payload, 'entry.0.changes.0.value.messages.0.text.body')
@@ -96,11 +110,14 @@ class AppServiceProvider extends ServiceProvider
                         'from' => $from,
                         'received_at' => $event->received_at,
                         'is_highlighted' => $isHighlighted,
-                        'lead_id' => $crmPayload['lead_id'] ?? null,
-                        'url' => route('notification'),
+                        'lead_id' => $leadId,
+                        'url' => $leadId !== null
+                            ? route('clinicLeadFollowUp', $leadId)
+                            : route('notification'),
                         'category' => 'whatsapp',
                     ];
                 })
+                ->filter()
                 ->filter(static fn (array $notification): bool => (bool) ($notification['is_highlighted'] ?? false))
                 ->values();
 

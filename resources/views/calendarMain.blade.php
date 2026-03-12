@@ -312,7 +312,7 @@
                                 </div>
                                 <div class="col-span-12">
                                     <div class="flex items-center justify-center gap-3 mt-6">
-                                        <button type="reset" data-modal-hide="edit-popup-modal" class="border border-danger-600 hover:bg-danger-100 text-danger-600 text-base px-10 py-[11px] rounded-lg">
+                                        <button type="reset" data-modal-hide="edit-popup-modal" class="btn btn-cancel text-base px-10 py-[11px] rounded-lg">
                                             Cancel
                                         </button>
                                         <button type="submit" class="btn btn-primary border border-primary-600 text-base px-6 py-3 rounded-lg">
@@ -445,7 +445,7 @@
                                 </div>
                                 <div class="col-span-12">
                                     <div class="flex items-center justify-center gap-3 mt-6">
-                                        <button type="reset" data-modal-hide="edit-popup-modal" class="border border-danger-600 hover:bg-danger-100 text-danger-600 text-base px-10 py-[11px] rounded-lg">
+                                        <button type="reset" data-modal-hide="edit-popup-modal" class="btn btn-cancel text-base px-10 py-[11px] rounded-lg">
                                             Cancel
                                         </button>
                                         <button type="submit" class="btn btn-primary border border-primary-600 text-base px-6 py-3 rounded-lg">
@@ -468,7 +468,7 @@
                         </span>
                         <h6 class="text-lg font-semibold text-neutral-600 dark:text-neutral-200 mb-0">Are your sure you want to delete this event</h6>
                         <div class="flex items-center justify-center gap-3 mt-6">
-                            <button type="reset" data-modal-hide="delete-popup-modal" class="w-1/2 border border-danger-600 hover:bg-danger-100 text-danger-600 text-base px-10 py-[11px] rounded-lg">
+                            <button type="reset" data-modal-hide="delete-popup-modal" class="btn btn-cancel w-1/2 text-base px-10 py-[11px] rounded-lg">
                                 Cancel
                             </button>
                             <button type="button" class="w-1/2 btn btn-primary border border-primary-600 text-base px-6 py-3 rounded-lg">

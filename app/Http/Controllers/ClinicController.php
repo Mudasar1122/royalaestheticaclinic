@@ -52,6 +52,7 @@ class ClinicController extends Controller
                             $contactQuery
                                 ->where('full_name', 'like', '%'.$search.'%')
                                 ->orWhere('phone', 'like', '%'.$search.'%')
+                                ->orWhere('normalized_phone', 'like', '%'.$search.'%')
                                 ->orWhere('email', 'like', '%'.$search.'%');
                         })
                         ->orWhere('source_platform', 'like', '%'.$search.'%')
@@ -81,6 +82,7 @@ class ClinicController extends Controller
             'leads' => $leads,
             'stages' => $this->stageOptions(),
             'sources' => $this->sourceOptions(),
+            'genderOptions' => $this->genderOptions(),
             'procedureOptions' => $this->procedureInterestOptions(),
             'leadTabs' => $leadTabs,
             'activeTab' => $activeTab,
@@ -94,21 +96,39 @@ class ClinicController extends Controller
         ]);
     }
 
+    public function deletedLeads(): View
+    {
+        $leads = Lead::onlyTrashed()
+            ->with(['contact'])
+            ->withMax('followUps as last_follow_up_at', 'due_at')
+            ->orderByDesc('deleted_at')
+            ->orderByDesc('last_activity_at')
+            ->get();
+
+        return view('clinic.deletedLeads', [
+            'leads' => $leads,
+            'sources' => $this->sourceOptions(),
+        ]);
+    }
+
     public function createManualLead(): View
     {
         return view('clinic.manualLead', [
             'sources' => $this->sourceOptions(),
             'stages' => $this->stageOptions(),
+            'genderOptions' => $this->genderOptions(),
             'procedureOptions' => $this->procedureInterestOptions(),
         ]);
     }
 
     public function storeManualLead(Request $request): RedirectResponse
     {
+        $genderKeys = array_keys($this->genderOptions());
         $procedureKeys = array_keys($this->procedureInterestOptions());
 
         $validated = $request->validate([
             'full_name' => ['required', 'string', 'max:120'],
+            'gender' => ['required', 'string', Rule::in($genderKeys)],
             'email' => ['nullable', 'email', 'max:120'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^\+92[1-9][0-9]{7,12}$/'],
             'source_platform' => ['required', 'string', 'in:facebook,instagram,whatsapp,tiktok,google_business,manual'],
@@ -124,7 +144,7 @@ class ClinicController extends Controller
 
         $normalizedStage = $this->normalizeLeadStage($validated['stage']);
         $remarks = trim((string) ($validated['remarks'] ?? ''));
-        $followUpDueAt = Carbon::parse((string) $validated['follow_up_due_at'], 'Asia/Karachi');
+        $followUpDueAt = $this->parsePakistanDateTimeToUtc((string) $validated['follow_up_due_at']);
         $normalizedPhone = $this->normalizePhone((string) $validated['phone']);
 
         if ($normalizedPhone === null) {
@@ -133,9 +153,18 @@ class ClinicController extends Controller
                 ->withInput();
         }
 
-        if (Contact::query()->where('normalized_phone', $normalizedPhone)->exists()) {
+        $existingContact = Contact::query()
+            ->where('normalized_phone', $normalizedPhone)
+            ->first();
+
+        if ($existingContact !== null) {
+            $existingLeadName = trim((string) ($existingContact->full_name ?? ''));
+            $duplicateMessage = $existingLeadName !== ''
+                ? 'This phone number is already registered for '.$existingLeadName.'.'
+                : 'This phone number is already registered.';
+
             return back()
-                ->withErrors(['phone' => 'This phone number is already registered.'])
+                ->withErrors(['phone' => $duplicateMessage])
                 ->withInput();
         }
 
@@ -150,6 +179,7 @@ class ClinicController extends Controller
         DB::transaction(function () use ($validated, $selectedProcedures, $procedureOther, $normalizedStage, $remarks, $followUpDueAt, $normalizedPhone): void {
             $contact = Contact::create([
                 'full_name' => $validated['full_name'],
+                'gender' => $validated['gender'],
                 'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'] ?? null,
                 'normalized_phone' => $normalizedPhone,
@@ -211,8 +241,12 @@ class ClinicController extends Controller
             ]);
         });
 
+        $redirectRoute = $request->user()?->hasModulePermission('lead_management', 'manage_followups')
+            ? 'clinicAppointments'
+            : 'clinicManualLead';
+
         return redirect()
-            ->route('clinicManualLead')
+            ->route($redirectRoute)
             ->with('status', 'Lead created successfully. First follow-up was added in queue.');
     }
 
@@ -232,6 +266,7 @@ class ClinicController extends Controller
         $isClosed = $this->isClosedLeadStage($newStage);
         $followUpSummary = trim((string) ($validated['follow_up_summary'] ?? ''));
         $createdFollowUp = null;
+        $followUpDueAt = $this->parsePakistanDateTimeToUtc($validated['follow_up_due_at'] ?? null);
 
         if (
             $newStage === 'booked'
@@ -240,7 +275,7 @@ class ClinicController extends Controller
             abort(403, 'You do not have permission to mark leads as booked.');
         }
 
-        DB::transaction(function () use ($lead, $validated, $newStage, $isClosed, &$createdFollowUp): void {
+        DB::transaction(function () use ($lead, $validated, $newStage, $isClosed, $followUpDueAt, &$createdFollowUp): void {
             $lead->forceFill([
                 'stage' => $newStage,
                 'status' => $isClosed ? 'closed' : 'open',
@@ -255,7 +290,7 @@ class ClinicController extends Controller
                     'trigger_type' => 'manual_stage_update',
                     'stage_snapshot' => $lead->stage,
                     'status' => 'pending',
-                    'due_at' => !empty($validated['follow_up_due_at']) ? $validated['follow_up_due_at'] : now()->addHours(4),
+                    'due_at' => $followUpDueAt ?? now()->addHours(4),
                     'summary' => $validated['follow_up_summary'] ?? 'Follow-up added while updating stage',
                     'metadata' => [
                         'source' => 'stage_update',
@@ -289,13 +324,21 @@ class ClinicController extends Controller
         TwilioWhatsAppService $twilioWhatsAppService
     ): RedirectResponse
     {
+        $genderKeys = array_keys($this->genderOptions());
+        $procedureKeys = array_keys($this->procedureInterestOptions());
+
         $validated = $request->validate([
             'full_name' => ['required', 'string', 'max:120'],
+            'gender' => ['required', 'string', Rule::in($genderKeys)],
             'email' => ['nullable', 'email', 'max:120'],
             'phone' => ['nullable', 'string', 'max:30'],
             'source_platform' => ['required', 'string', 'in:facebook,instagram,whatsapp,tiktok,google_business,manual'],
             'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
             'status' => ['required', 'string', 'in:open,closed'],
+            'procedure_interests_submitted' => ['nullable', 'boolean'],
+            'procedure_interests' => ['nullable', 'array'],
+            'procedure_interests.*' => ['string', Rule::in($procedureKeys)],
+            'procedure_other' => ['nullable', 'string', 'max:255'],
             'follow_up_due_at' => ['nullable', 'date'],
             'follow_up_summary' => ['nullable', 'string', 'max:255'],
         ]);
@@ -303,8 +346,25 @@ class ClinicController extends Controller
         $normalizedStage = $this->normalizeLeadStage($validated['stage']);
         $resolvedStatus = $this->isClosedLeadStage($normalizedStage) ? 'closed' : $validated['status'];
         $normalizedPhone = $this->normalizePhone((string) ($validated['phone'] ?? ''));
+        $proceduresWereSubmitted = filter_var(
+            $validated['procedure_interests_submitted'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $selectedProcedureInterests = collect($validated['procedure_interests'] ?? [])
+            ->map(static fn ($value): string => (string) $value)
+            ->filter(static fn (string $value): bool => $value !== '')
+            ->unique()
+            ->values()
+            ->all();
+        $procedureOther = trim((string) ($validated['procedure_other'] ?? ''));
+
+        if (!in_array('other', $selectedProcedureInterests, true)) {
+            $procedureOther = '';
+        }
+
         $followUpSummary = trim((string) ($validated['follow_up_summary'] ?? ''));
         $createdFollowUp = null;
+        $followUpDueAt = $this->parsePakistanDateTimeToUtc($validated['follow_up_due_at'] ?? null);
 
         if (
             $normalizedStage === 'booked'
@@ -313,12 +373,24 @@ class ClinicController extends Controller
             abort(403, 'You do not have permission to mark leads as booked.');
         }
 
-        DB::transaction(function () use ($lead, $validated, $normalizedStage, $resolvedStatus, $normalizedPhone, &$createdFollowUp): void {
+        DB::transaction(function () use (
+            $lead,
+            $validated,
+            $normalizedStage,
+            $resolvedStatus,
+            $normalizedPhone,
+            $proceduresWereSubmitted,
+            $selectedProcedureInterests,
+            $procedureOther,
+            $followUpDueAt,
+            &$createdFollowUp
+        ): void {
             $contact = $lead->contact;
 
             if ($contact === null) {
                 $contact = Contact::create([
                     'full_name' => $validated['full_name'],
+                    'gender' => $validated['gender'],
                     'email' => $validated['email'] ?? null,
                     'phone' => $validated['phone'] ?? null,
                     'normalized_phone' => $normalizedPhone,
@@ -330,11 +402,19 @@ class ClinicController extends Controller
             } else {
                 $contact->forceFill([
                     'full_name' => $validated['full_name'],
+                    'gender' => $validated['gender'],
                     'email' => $validated['email'] ?? null,
                     'phone' => $validated['phone'] ?? null,
                     'normalized_phone' => $normalizedPhone,
                     'default_source' => $validated['source_platform'],
                 ])->save();
+            }
+
+            $leadMeta = is_array($lead->meta) ? $lead->meta : [];
+
+            if ($proceduresWereSubmitted) {
+                $leadMeta['procedures_of_interest'] = $selectedProcedureInterests;
+                $leadMeta['procedure_other'] = $procedureOther !== '' ? $procedureOther : null;
             }
 
             $lead->forceFill([
@@ -344,6 +424,7 @@ class ClinicController extends Controller
                 'status' => $resolvedStatus,
                 'closed_at' => $resolvedStatus === 'closed' ? ($lead->closed_at ?? now()) : null,
                 'last_activity_at' => now(),
+                'meta' => $leadMeta,
             ])->save();
 
             if (!empty($validated['follow_up_due_at']) || !empty($validated['follow_up_summary'])) {
@@ -353,7 +434,7 @@ class ClinicController extends Controller
                     'trigger_type' => 'manual_lead_edit',
                     'stage_snapshot' => $normalizedStage,
                     'status' => 'pending',
-                    'due_at' => !empty($validated['follow_up_due_at']) ? $validated['follow_up_due_at'] : now()->addHours(4),
+                    'due_at' => $followUpDueAt ?? now()->addHours(4),
                     'summary' => $validated['follow_up_summary'] ?? 'Follow-up added while editing lead',
                     'metadata' => [
                         'source' => 'lead_edit',
@@ -378,7 +459,37 @@ class ClinicController extends Controller
             }
         }
 
-        return back()->with('status', 'Lead updated successfully.');
+        return back()->with('status', 'Lead updated.');
+    }
+
+    public function destroyLead(Request $request, Lead $lead): RedirectResponse
+    {
+        if (!($request->user()?->isAdmin() ?? false)) {
+            abort(403, 'Only administrators can delete leads.');
+        }
+
+        $lead->delete();
+
+        return redirect()
+            ->route('clinicLeads')
+            ->with('status', 'Lead deleted.');
+    }
+
+    public function restoreLead(Request $request, int $leadId): RedirectResponse
+    {
+        if (!($request->user()?->isAdmin() ?? false)) {
+            abort(403, 'Only administrators can restore leads.');
+        }
+
+        $lead = Lead::withTrashed()->findOrFail($leadId);
+
+        if ($lead->trashed()) {
+            $lead->restore();
+        }
+
+        return redirect()
+            ->route('clinicDeletedLeads')
+            ->with('status', 'Lead restored.');
     }
 
     public function sendWhatsAppMessage(
@@ -673,11 +784,13 @@ class ClinicController extends Controller
         ]);
 
         $activeTab = (string) ($validated['tab'] ?? 'today');
-        $now = now('Asia/Karachi');
-        $todayStart = $now->copy()->startOfDay();
-        $todayEnd = $now->copy()->endOfDay();
+        $pakistanNow = now('Asia/Karachi');
+        $now = $pakistanNow->copy()->utc();
+        $todayStart = $pakistanNow->copy()->startOfDay()->utc();
+        $todayEnd = $pakistanNow->copy()->endOfDay()->utc();
 
         $tabScopedPendingQuery = FollowUp::query()
+            ->whereHas('lead')
             ->where('status', 'pending')
             ->when($activeTab === 'today', fn (Builder $query): Builder => $query->whereBetween('due_at', [$todayStart, $todayEnd]))
             ->when($activeTab === 'pending', fn (Builder $query): Builder => $query->where('due_at', '<', $now))
@@ -700,14 +813,17 @@ class ClinicController extends Controller
             'leads' => $leads,
             'activeTab' => $activeTab,
             'todayCount' => FollowUp::query()
+                ->whereHas('lead')
                 ->where('status', 'pending')
                 ->whereBetween('due_at', [$todayStart, $todayEnd])
                 ->count(),
             'pendingCount' => FollowUp::query()
+                ->whereHas('lead')
                 ->where('status', 'pending')
                 ->where('due_at', '<', $now)
                 ->count(),
             'upcomingCount' => FollowUp::query()
+                ->whereHas('lead')
                 ->where('status', 'pending')
                 ->where('due_at', '>', $todayEnd)
                 ->count(),
@@ -732,6 +848,8 @@ class ClinicController extends Controller
             'followUpMethods' => $this->followUpMethodOptions(),
             'followUpStages' => $this->followUpFormStageOptions(),
             'sourceOptions' => $this->sourceOptions(),
+            'genderOptions' => $this->genderOptions(),
+            'stages' => $this->stageOptions(),
             'procedureOptions' => $this->procedureInterestOptions(),
         ]);
     }
@@ -773,11 +891,11 @@ class ClinicController extends Controller
             'remarks.required' => 'Remarks are required.',
         ]));
 
-        $resolvedAt = now('Asia/Karachi');
+        $resolvedAt = now();
         $remarks = trim((string) ($validated['remarks'] ?? ''));
 
         $nextDueAt = !$isClosedStage && !empty($validated['next_follow_up_due_at'])
-            ? Carbon::parse((string) $validated['next_follow_up_due_at'], 'Asia/Karachi')
+            ? $this->parsePakistanDateTimeToUtc((string) $validated['next_follow_up_due_at'])
             : null;
 
         DB::transaction(function () use ($lead, $validated, $nextStage, $isClosedStage, $resolvedAt, $nextDueAt, $remarks): void {
@@ -820,7 +938,78 @@ class ClinicController extends Controller
 
         return redirect()
             ->route('clinicLeadFollowUp', $lead)
-            ->with('status', 'Follow-up saved successfully.');
+            ->with('status', 'Follow-up added.');
+    }
+
+    public function updateFollowUp(Request $request, FollowUp $followUp): RedirectResponse
+    {
+        if (!($request->user()?->isAdmin() ?? false)) {
+            abort(403, 'Only administrators can edit follow-ups.');
+        }
+
+        if ($followUp->lead === null) {
+            abort(404);
+        }
+
+        $methodOptions = array_keys($this->followUpEditableMethodOptions());
+        $stageOptions = array_keys($this->followUpFormStageOptions());
+
+        $validated = $request->validate([
+            'follow_up_method' => ['required', 'string', Rule::in($methodOptions)],
+            'stage' => ['required', 'string', Rule::in($stageOptions)],
+            'next_follow_up_due_at' => ['nullable', 'date'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
+            'follow_up_id' => ['nullable', 'integer'],
+            'follow_up_edit_submission' => ['nullable', 'boolean'],
+        ], [
+            'next_follow_up_due_at.required' => 'Next follow-up date and time is required.',
+        ]);
+
+        $nextStage = $this->normalizeLeadStage((string) $validated['stage']);
+        $isClosedStage = $this->isClosedLeadStage($nextStage);
+        $nextDueAt = !empty($validated['next_follow_up_due_at'])
+            ? $this->parsePakistanDateTimeToUtc((string) $validated['next_follow_up_due_at'])
+            : null;
+        $remarks = trim((string) ($validated['remarks'] ?? ''));
+
+        if (
+            $nextStage === 'booked'
+            && !($request->user()?->hasModulePermission('lead_management', 'mark_booked') ?? false)
+        ) {
+            abort(403, 'You do not have permission to mark leads as booked.');
+        }
+
+        if (!$isClosedStage && empty($nextDueAt)) {
+            return back()
+                ->withErrors(['next_follow_up_due_at' => 'Next follow-up date and time is required.'])
+                ->withInput();
+        }
+
+        DB::transaction(function () use ($followUp, $validated, $nextStage, $isClosedStage, $nextDueAt, $remarks): void {
+            $resolvedAt = now();
+
+            $followUp->forceFill([
+                'trigger_type' => $validated['follow_up_method'],
+                'stage_snapshot' => $nextStage,
+                'due_at' => $nextDueAt,
+                'summary' => $remarks !== '' ? $remarks : null,
+            ])->save();
+
+            $lead = $followUp->lead;
+
+            if ($lead !== null && $followUp->status === 'pending') {
+                $lead->forceFill([
+                    'stage' => $nextStage,
+                    'status' => $isClosedStage ? 'closed' : 'open',
+                    'closed_at' => $isClosedStage ? ($lead->closed_at ?? $resolvedAt) : null,
+                    'last_activity_at' => $resolvedAt,
+                ])->save();
+            }
+        });
+
+        return redirect()
+            ->route('clinicLeadFollowUp', $followUp->lead_id)
+            ->with('status', 'Follow-up updated.');
     }
 
     public function updateFollowUpStatus(
@@ -829,6 +1018,10 @@ class ClinicController extends Controller
         TwilioWhatsAppService $twilioWhatsAppService
     ): RedirectResponse
     {
+        if ($followUp->lead === null) {
+            abort(404);
+        }
+
         $validated = $request->validate([
             'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
             'next_follow_up_due_at' => ['nullable', 'date'],
@@ -839,7 +1032,7 @@ class ClinicController extends Controller
         $nextStage = $this->normalizeLeadStage($validated['stage']);
         $isClosedStage = $this->isClosedLeadStage($nextStage);
         $nextDueAt = !empty($validated['next_follow_up_due_at'])
-            ? Carbon::parse((string) $validated['next_follow_up_due_at'], 'Asia/Karachi')
+            ? $this->parsePakistanDateTimeToUtc((string) $validated['next_follow_up_due_at'])
             : null;
         $remarks = trim((string) ($validated['remarks'] ?? ''));
         $shouldSendRemarks = (bool) ($validated['send_remarks_to_customer'] ?? false);
@@ -911,15 +1104,15 @@ class ClinicController extends Controller
             if ($sendError !== null) {
                 return back()
                     ->withErrors(['whatsapp' => $sendError])
-                    ->with('status', 'Follow-up saved, but remarks were not sent to customer.');
+                    ->with('status', 'Follow-up added. Remarks not sent.');
             }
         }
 
         if ($isClosedStage) {
-            return back()->with('status', 'Follow-up saved and lead closed.');
+            return back()->with('status', 'Follow-up added.');
         }
 
-        return back()->with('status', 'Follow-up saved and next follow-up scheduled.');
+        return back()->with('status', 'Follow-up added.');
     }
 
     public function consultations(): View
@@ -982,6 +1175,17 @@ class ClinicController extends Controller
     /**
      * @return array<string, string>
      */
+    private function genderOptions(): array
+    {
+        return [
+            'male' => 'Male',
+            'female' => 'Female',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
     private function followUpMethodOptions(): array
     {
         return [
@@ -989,6 +1193,23 @@ class ClinicController extends Controller
             'whatsapp' => 'WhatsApp',
             'sms' => 'SMS',
             'walkin' => 'Walk In',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function followUpEditableMethodOptions(): array
+    {
+        return [
+            'call' => 'Call',
+            'whatsapp' => 'WhatsApp',
+            'sms' => 'SMS',
+            'walkin' => 'Walk In',
+            'manual_lead_create' => 'Walk In',
+            'manual_stage_update' => 'Manual Stage Update',
+            'manual_lead_edit' => 'Lead Edit',
+            'manual_follow_up_update' => 'Manual Follow-up',
         ];
     }
 
@@ -1103,6 +1324,17 @@ class ClinicController extends Controller
         }
 
         return '+'.$digits;
+    }
+
+    private function parsePakistanDateTimeToUtc(?string $value): ?Carbon
+    {
+        $resolvedValue = trim((string) $value);
+
+        if ($resolvedValue === '') {
+            return null;
+        }
+
+        return Carbon::parse($resolvedValue, 'Asia/Karachi')->utc();
     }
 
     private function sendFollowUpRemarkToCustomer(

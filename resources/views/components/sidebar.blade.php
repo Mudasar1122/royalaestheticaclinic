@@ -17,8 +17,9 @@
             $canCreateLead = $currentUser?->hasModulePermission('lead_management', 'create_lead') ?? false;
             $canManageFollowups = $currentUser?->hasModulePermission('lead_management', 'manage_followups') ?? false;
             $canViewLeads = $currentUser?->hasModulePermission('lead_management', 'view_leads') ?? false;
+            $canViewDeletedLeads = $currentUser?->isAdmin() ?? false;
             $canViewCampaigns = $currentUser?->hasModulePermission('campaign_management', 'view_campaigns') ?? false;
-            $hasAnyLeadUiPermission = $canCreateLead || $canManageFollowups || $canViewLeads;
+            $hasAnyLeadUiPermission = $canCreateLead || $canManageFollowups || $canViewLeads || $canViewDeletedLeads;
         @endphp
         <ul class="sidebar-menu" id="sidebar-menu">
             <li class="dropdown">
@@ -52,6 +53,11 @@
                         @if ($canViewLeads)
                             <li>
                                 <a href="{{ route('clinicLeads') }}"><i class="ri-circle-fill circle-icon text-warning-600 w-auto"></i> All Leads</a>
+                            </li>
+                        @endif
+                        @if ($canViewDeletedLeads)
+                            <li>
+                                <a href="{{ route('clinicDeletedLeads') }}"><i class="ri-circle-fill circle-icon text-warning-600 w-auto"></i> Deleted Leads</a>
                             </li>
                         @endif
                     </ul>

@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Lead extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     /**
      * @var array<int, string>
@@ -35,6 +36,7 @@ class Lead extends Model
             'first_message_at' => 'datetime',
             'last_activity_at' => 'datetime',
             'closed_at' => 'datetime',
+            'deleted_at' => 'datetime',
             'meta' => 'array',
         ];
     }

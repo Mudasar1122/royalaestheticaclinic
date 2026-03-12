@@ -28,12 +28,6 @@
         }
     @endphp
 
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
-            {{ session('status') }}
-        </div>
-    @endif
-
     @if ($errors->has('whatsapp_demo'))
         <div class="alert alert-danger px-4 py-3 rounded-lg mb-6">
             {{ $errors->first('whatsapp_demo') }}

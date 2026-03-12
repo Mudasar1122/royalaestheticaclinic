@@ -15,9 +15,10 @@ class DashboardController extends Controller
 
     public function crm()
     {
-        $now = now('Asia/Karachi');
-        $todayStart = $now->copy()->startOfDay();
-        $todayEnd = $now->copy()->endOfDay();
+        $pakistanNow = now('Asia/Karachi');
+        $now = $pakistanNow->copy()->utc();
+        $todayStart = $pakistanNow->copy()->startOfDay()->utc();
+        $todayEnd = $pakistanNow->copy()->endOfDay()->utc();
 
         $stageTotals = Lead::query()
             ->selectRaw('stage, COUNT(*) as total')

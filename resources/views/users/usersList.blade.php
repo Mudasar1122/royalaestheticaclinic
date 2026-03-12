@@ -6,12 +6,6 @@
 @endphp
 
 @section('content')
-    @if (session('status'))
-        <div class="alert alert-success px-4 py-3 rounded-lg mb-6">
-            {{ session('status') }}
-        </div>
-    @endif
-
     @if ($errors->any())
         <div class="alert alert-danger px-4 py-3 rounded-lg mb-6">
             {{ $errors->first() }}
@@ -93,6 +87,14 @@
                                             >
                                                 Edit User
                                             </a>
+                                            @if (!$userItem->isAdmin())
+                                                <form method="POST" action="{{ route('usersImpersonate', $userItem) }}" class="followup-action-form">
+                                                    @csrf
+                                                    <button type="submit" class="followup-action-item" data-action-menu-close>
+                                                        Login As User
+                                                    </button>
+                                                </form>
+                                            @endif
                                             <form method="POST" action="{{ route('usersToggleStatus', $userItem) }}" class="followup-action-form">
                                                 @csrf
                                                 @method('PATCH')
@@ -281,7 +283,11 @@
 
                     if (menu) {
                         menu.classList.add('hidden');
-                        menu.classList.remove('open-up');
+                        if (window.royalUi && typeof window.royalUi.resetActionDropdown === 'function') {
+                            window.royalUi.resetActionDropdown(menu);
+                        } else {
+                            menu.classList.remove('open-up');
+                        }
                     }
 
                     dropdown.classList.remove('is-open');
@@ -293,16 +299,9 @@
             };
 
             const placeMenu = function (button, menu) {
-                menu.classList.remove('open-up');
-
-                const buttonRect = button.getBoundingClientRect();
-                const menuRect = menu.getBoundingClientRect();
-                const spaceBelow = window.innerHeight - buttonRect.bottom;
-                const spaceAbove = buttonRect.top;
-                const neededHeight = menuRect.height + 16;
-
-                if (spaceBelow < neededHeight && spaceAbove > neededHeight) {
-                    menu.classList.add('open-up');
+                if (window.royalUi && typeof window.royalUi.placeActionDropdown === 'function') {
+                    window.royalUi.placeActionDropdown(button, menu);
+                    return;
                 }
             };
 
@@ -336,7 +335,11 @@
                         button.setAttribute('aria-expanded', 'true');
                     } else {
                         menu.classList.add('hidden');
-                        menu.classList.remove('open-up');
+                        if (window.royalUi && typeof window.royalUi.resetActionDropdown === 'function') {
+                            window.royalUi.resetActionDropdown(menu);
+                        } else {
+                            menu.classList.remove('open-up');
+                        }
                         dropdown.classList.remove('is-open');
                         button.setAttribute('aria-expanded', 'false');
                     }

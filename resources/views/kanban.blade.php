@@ -526,7 +526,7 @@ $script = '<script>
                         </form>
                     </div>
                     <div class="flex items-center gap-4 p-4 md:p-5 border-t border-gray-200 rounded-b dark:border-gray-600">
-                        <button type="button" data-modal-hide="default-modal" class="border border-danger-600 bg-hover-danger-200 text-danger-600 text-base px-[50px] py-[11px] rounded-lg" data-bs-dismiss="modal">
+                        <button type="button" data-modal-hide="default-modal" class="btn btn-cancel text-base px-[50px] py-[11px] rounded-lg" data-bs-dismiss="modal">
                             Cancel
                         </button>
                         <button type="submit" class="btn btn-primary border border-primary-600 text-base px-7 py-3 rounded-lg" id="saveTaskButton">
