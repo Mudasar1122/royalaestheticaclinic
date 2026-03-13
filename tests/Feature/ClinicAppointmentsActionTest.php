@@ -33,6 +33,8 @@ class ClinicAppointmentsActionTest extends TestCase
         $response->assertSee($contact->full_name);
         $response->assertSee($contact->phone);
         $response->assertDontSee($contact->phone . ' / Female');
+        $response->assertSee('Follower');
+        $response->assertSee($user->name);
         $response->assertSee('Action');
         $response->assertSee('Add Follow-up');
         $response->assertSee(route('clinicLeadFollowUp', $lead), false);
@@ -61,16 +63,41 @@ class ClinicAppointmentsActionTest extends TestCase
         $response->assertSee(route('clinicLeadStageUpdate', $lead), false);
     }
 
+    public function test_appointments_only_show_leads_assigned_to_the_logged_in_user(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups'],
+            ],
+        ]);
+        $otherUser = User::factory()->create([
+            'role' => 'staff',
+        ]);
+
+        [$ownContact] = $this->createLeadWithPendingFollowUp($user, '+923001234567');
+        [$otherContact] = $this->createLeadWithPendingFollowUp($otherUser, '+923009998887');
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('clinicAppointments', ['tab' => 'today']));
+
+        $response->assertOk();
+        $response->assertSee($ownContact->phone);
+        $response->assertDontSee($otherContact->phone);
+    }
+
     /**
      * @return array{0: Contact, 1: Lead}
      */
-    private function createLeadWithPendingFollowUp(User $user): array
+    private function createLeadWithPendingFollowUp(User $user, string $phone = '+923001234567'): array
     {
         $contact = Contact::query()->create([
             'full_name' => 'Ayesha Khan',
             'gender' => 'female',
-            'phone' => '+923001234567',
-            'normalized_phone' => '+923001234567',
+            'phone' => $phone,
+            'normalized_phone' => $phone,
             'default_source' => 'manual',
         ]);
 
@@ -79,6 +106,7 @@ class ClinicAppointmentsActionTest extends TestCase
             'source_platform' => 'manual',
             'status' => 'open',
             'stage' => 'new',
+            'assigned_to_user_id' => $user->id,
             'last_activity_at' => now(),
             'meta' => [
                 'origin' => 'manual_form',
@@ -94,6 +122,7 @@ class ClinicAppointmentsActionTest extends TestCase
             'status' => 'pending',
             'due_at' => now('Asia/Karachi')->startOfDay()->addHours(12)->utc(),
             'summary' => 'Queue item',
+            'assigned_to_user_id' => $user->id,
             'created_by_user_id' => $user->id,
         ]);
 

@@ -15,22 +15,26 @@ class DashboardController extends Controller
 
     public function crm()
     {
+        $user = request()->user();
         $pakistanNow = now('Asia/Karachi');
         $now = $pakistanNow->copy()->utc();
         $todayStart = $pakistanNow->copy()->startOfDay()->utc();
         $todayEnd = $pakistanNow->copy()->endOfDay()->utc();
 
         $stageTotals = Lead::query()
+            ->visibleTo($user)
             ->selectRaw('stage, COUNT(*) as total')
             ->groupBy('stage')
             ->pluck('total', 'stage');
 
         $sourceTotals = Lead::query()
+            ->visibleTo($user)
             ->selectRaw('source_platform, COUNT(*) as total')
             ->groupBy('source_platform')
             ->pluck('total', 'source_platform');
 
         $engagedSourceTotals = Lead::query()
+            ->visibleTo($user)
             ->whereNotIn('stage', ['new', 'initial'])
             ->selectRaw('source_platform, COUNT(*) as total')
             ->groupBy('source_platform')
@@ -93,6 +97,7 @@ class DashboardController extends Controller
         $procedureTotals = [];
 
         Lead::query()
+            ->visibleTo($user)
             ->select(['id', 'meta'])
             ->get()
             ->each(function (Lead $lead) use (&$procedureTotals): void {
@@ -129,6 +134,7 @@ class DashboardController extends Controller
         }
 
         $todayFollowUps = FollowUp::query()
+            ->visibleTo($user)
             ->with(['lead.contact', 'assignedTo'])
             ->where('status', 'pending')
             ->whereBetween('due_at', [$todayStart, $todayEnd])
@@ -154,6 +160,7 @@ class DashboardController extends Controller
             ->values();
 
         $recentLeads = Lead::query()
+            ->visibleTo($user)
             ->with([
                 'contact',
                 'followUps' => static fn ($query) => $query
@@ -196,13 +203,17 @@ class DashboardController extends Controller
             ->values();
 
         $summary = [
-            'total_leads' => Lead::query()->count(),
-            'active_leads' => Lead::query()->where('status', 'open')->count(),
+            'total_leads' => Lead::query()->visibleTo($user)->count(),
+            'active_leads' => Lead::query()->visibleTo($user)->where('status', 'open')->count(),
             'today_follow_ups' => FollowUp::query()
+                ->visibleTo($user)
                 ->where('status', 'pending')
                 ->whereBetween('due_at', [$todayStart, $todayEnd])
                 ->count(),
-            'pending_follow_ups' => FollowUp::query()->where('status', 'pending')->count(),
+            'pending_follow_ups' => FollowUp::query()
+                ->visibleTo($user)
+                ->where('status', 'pending')
+                ->count(),
         ];
 
         return view('dashboard/index2', [

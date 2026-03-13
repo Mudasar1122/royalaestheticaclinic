@@ -76,6 +76,7 @@
                             <th>Procedure of Interest</th>
                             <th>Stage</th>
                             <th>Last Follow-up</th>
+                            <th>Follower</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
@@ -144,11 +145,12 @@
                                 </td>
                                 <td>
                                     @if ($lead->last_follow_up_at)
-                                        {{ \Illuminate\Support\Carbon::parse((string) $lead->last_follow_up_at)->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
+                                        {{ \Illuminate\Support\Carbon::parse((string) $lead->last_follow_up_at)->timezone('Asia/Karachi')->format('d M Y') }}
                                     @else
                                         -
                                     @endif
                                 </td>
+                                <td>{{ $lead->assignedTo?->name ?? 'Unassigned' }}</td>
                                 <td class="text-center">
                                     @php
                                         $showAddFollowUp = true;
@@ -201,7 +203,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center py-10 text-secondary-light">No follow-ups available in this queue.</td>
+                                <td colspan="7" class="text-center py-10 text-secondary-light">No follow-ups available in this queue.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -282,8 +284,9 @@
         }
 
         .followup-grid-card .table {
+            width: 100% !important;
             min-width: 100% !important;
-            table-layout: auto;
+            table-layout: fixed;
         }
 
         .followup-grid-card .datatable-wrapper .datatable-top {
@@ -322,52 +325,49 @@
 
         #followup-grid-table th,
         #followup-grid-table td {
-            white-space: nowrap !important;
-            word-break: normal !important;
+            white-space: normal !important;
+            word-break: break-word !important;
             vertical-align: top;
+            padding-inline: 10px;
         }
 
         #followup-grid-table th:nth-child(1),
         #followup-grid-table td:nth-child(1) {
             width: 16%;
-            min-width: 190px;
         }
 
         #followup-grid-table th:nth-child(2),
         #followup-grid-table td:nth-child(2) {
-            width: 14%;
-            min-width: 165px;
-            white-space: nowrap;
+            width: 13%;
         }
 
         #followup-grid-table th:nth-child(3),
         #followup-grid-table td:nth-child(3) {
-            width: 26%;
+            width: 23%;
             text-align: left;
             white-space: normal !important;
-            min-width: 280px;
         }
 
         #followup-grid-table th:nth-child(4),
         #followup-grid-table td:nth-child(4) {
             width: 10%;
-            min-width: 120px;
         }
 
         #followup-grid-table th:nth-child(5),
         #followup-grid-table td:nth-child(5) {
-            width: 18%;
-            min-width: 210px;
+            width: 12%;
         }
 
         #followup-grid-table th:nth-child(6),
         #followup-grid-table td:nth-child(6) {
-            width: 10%;
-            min-width: 132px;
+            width: 14%;
         }
 
-        #followup-grid-table td:nth-child(3) {
-            min-width: 260px;
+        #followup-grid-table th:nth-child(7),
+        #followup-grid-table td:nth-child(7) {
+            width: 12%;
+            text-align: center;
+            white-space: nowrap !important;
         }
 
         .followup-stage-pill {
@@ -387,7 +387,8 @@
         }
 
         .followup-action-btn {
-            min-width: 96px;
+            min-width: 78px;
+            padding-inline: 10px !important;
             justify-content: center;
             white-space: nowrap;
         }
@@ -472,11 +473,22 @@
             }
 
             .followup-grid-card .table-responsive {
-                overflow-x: auto;
+                overflow-x: visible;
             }
 
             .followup-grid-card .table {
-                min-width: 960px !important;
+                width: 100% !important;
+                min-width: 100% !important;
+            }
+
+            #followup-grid-table th,
+            #followup-grid-table td {
+                font-size: 0.82rem;
+                padding-inline: 8px;
+            }
+
+            .followup-action-btn {
+                min-width: 70px;
             }
         }
     </style>
@@ -492,7 +504,7 @@
                     perPage: 10,
                     perPageSelect: [10, 25, 50, 100],
                     columns: [
-                        { select: [5], sortable: false, searchable: false },
+                        { select: [6], sortable: false, searchable: false },
                     ],
                     labels: {
                         placeholder: 'Search...',

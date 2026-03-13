@@ -24,13 +24,33 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         View::composer(['components.navbar', 'settings.notification'], function ($view): void {
+            $user = auth()->user();
+
+            if ($user === null) {
+                $view->with('crmNotifications', collect());
+                $view->with('crmNotificationCount', 0);
+                $view->with('crmHighlightedNotificationCount', 0);
+
+                return;
+            }
+
+            $visibleLeadIds = $user->isAdmin()
+                ? null
+                : array_fill_keys(
+                    Lead::query()
+                        ->visibleTo($user)
+                        ->pluck('id')
+                        ->map(static fn ($leadId): string => (string) $leadId)
+                        ->all(),
+                    true
+                );
             $pakistanNow = now('Asia/Karachi');
             $now = $pakistanNow->copy()->utc();
             $reminderWindowEnd = $now->copy()->addHours(24);
 
             $followUpNotifications = FollowUp::query()
+                ->visibleTo($user)
                 ->with(['lead.contact'])
-                ->whereHas('lead')
                 ->where('status', 'pending')
                 ->whereBetween('due_at', [$now, $reminderWindowEnd])
                 ->orderBy('due_at')
@@ -68,15 +88,23 @@ class AppServiceProvider extends ServiceProvider
                 ->latest('received_at')
                 ->limit(8)
                 ->get()
-                ->map(function (WebhookEvent $event): ?array {
+                ->map(function (WebhookEvent $event) use ($visibleLeadIds): ?array {
                     $payload = is_array($event->payload) ? $event->payload : [];
                     $crmPayload = is_array($payload['_crm'] ?? null) ? $payload['_crm'] : [];
                     $leadId = !empty($crmPayload['lead_id']) ? (int) $crmPayload['lead_id'] : null;
                     $activeLeadExists = $leadId !== null
-                        ? Lead::query()->whereKey($leadId)->exists()
+                        ? (
+                            $visibleLeadIds === null
+                                ? Lead::query()->whereKey($leadId)->exists()
+                                : isset($visibleLeadIds[(string) $leadId])
+                        )
                         : false;
 
                     if ($leadId !== null && !$activeLeadExists) {
+                        return null;
+                    }
+
+                    if ($leadId === null && $visibleLeadIds !== null) {
                         return null;
                     }
 

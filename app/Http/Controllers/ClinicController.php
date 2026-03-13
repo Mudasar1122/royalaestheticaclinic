@@ -7,6 +7,7 @@ use App\Models\ContactIdentity;
 use App\Models\FollowUp;
 use App\Models\Lead;
 use App\Models\LeadActivity;
+use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Services\Messaging\TwilioWhatsAppService;
 use Illuminate\Contracts\View\View;
@@ -23,6 +24,7 @@ class ClinicController extends Controller
     public function leads(Request $request): View
     {
         $leadTabs = $this->leadTabs();
+        $user = $request->user();
 
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
@@ -43,6 +45,7 @@ class ClinicController extends Controller
         $tabStages = $leadTabs[$activeTab]['stages'] ?? [];
 
         $leadsQuery = Lead::query()
+            ->visibleTo($user)
             ->with(['contact', 'assignedTo'])
             ->withMax('followUps as last_follow_up_at', 'due_at')
             ->when($search !== '', function (Builder $query) use ($search): void {
@@ -71,6 +74,7 @@ class ClinicController extends Controller
         $tabCounts = [];
         foreach ($leadTabs as $tabKey => $tabConfig) {
             $tabCounts[$tabKey] = Lead::query()
+                ->visibleTo($user)
                 ->when(
                     !empty($tabConfig['stages']),
                     fn (Builder $query): Builder => $query->whereIn('stage', $tabConfig['stages'])
@@ -256,6 +260,8 @@ class ClinicController extends Controller
         TwilioWhatsAppService $twilioWhatsAppService
     ): RedirectResponse
     {
+        $this->authorizeLeadAccess($request->user(), $lead);
+
         $validated = $request->validate([
             'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
             'follow_up_due_at' => ['nullable', 'date'],
@@ -295,7 +301,7 @@ class ClinicController extends Controller
                     'metadata' => [
                         'source' => 'stage_update',
                     ],
-                    'assigned_to_user_id' => auth()->id(),
+                    'assigned_to_user_id' => $lead->assigned_to_user_id ?: auth()->id(),
                     'created_by_user_id' => auth()->id(),
                 ]);
             }
@@ -324,6 +330,8 @@ class ClinicController extends Controller
         TwilioWhatsAppService $twilioWhatsAppService
     ): RedirectResponse
     {
+        $this->authorizeLeadAccess($request->user(), $lead);
+
         $genderKeys = array_keys($this->genderOptions());
         $procedureKeys = array_keys($this->procedureInterestOptions());
 
@@ -439,7 +447,7 @@ class ClinicController extends Controller
                     'metadata' => [
                         'source' => 'lead_edit',
                     ],
-                    'assigned_to_user_id' => auth()->id(),
+                    'assigned_to_user_id' => $lead->assigned_to_user_id ?: auth()->id(),
                     'created_by_user_id' => auth()->id(),
                 ]);
             }
@@ -497,6 +505,8 @@ class ClinicController extends Controller
         Lead $lead,
         TwilioWhatsAppService $twilioWhatsAppService
     ): RedirectResponse {
+        $this->authorizeLeadAccess($request->user(), $lead);
+
         $validated = $request->validate([
             'message' => ['required', 'string', 'max:4096'],
         ]);
@@ -779,6 +789,7 @@ class ClinicController extends Controller
 
     public function appointments(Request $request): View
     {
+        $user = $request->user();
         $validated = $request->validate([
             'tab' => ['nullable', 'string', 'in:today,pending,upcoming'],
         ]);
@@ -790,7 +801,7 @@ class ClinicController extends Controller
         $todayEnd = $pakistanNow->copy()->endOfDay()->utc();
 
         $tabScopedPendingQuery = FollowUp::query()
-            ->whereHas('lead')
+            ->visibleTo($user)
             ->where('status', 'pending')
             ->when($activeTab === 'today', fn (Builder $query): Builder => $query->whereBetween('due_at', [$todayStart, $todayEnd]))
             ->when($activeTab === 'pending', fn (Builder $query): Builder => $query->where('due_at', '<', $now))
@@ -801,7 +812,7 @@ class ClinicController extends Controller
             ->distinct();
 
         $leads = Lead::query()
-            ->with(['contact'])
+            ->with(['contact', 'assignedTo'])
             ->withCount('followUps')
             ->withMax('followUps as last_follow_up_at', 'due_at')
             ->whereIn('id', $leadIdsSubQuery)
@@ -813,17 +824,17 @@ class ClinicController extends Controller
             'leads' => $leads,
             'activeTab' => $activeTab,
             'todayCount' => FollowUp::query()
-                ->whereHas('lead')
+                ->visibleTo($user)
                 ->where('status', 'pending')
                 ->whereBetween('due_at', [$todayStart, $todayEnd])
                 ->count(),
             'pendingCount' => FollowUp::query()
-                ->whereHas('lead')
+                ->visibleTo($user)
                 ->where('status', 'pending')
                 ->where('due_at', '<', $now)
                 ->count(),
             'upcomingCount' => FollowUp::query()
-                ->whereHas('lead')
+                ->visibleTo($user)
                 ->where('status', 'pending')
                 ->where('due_at', '>', $todayEnd)
                 ->count(),
@@ -834,6 +845,8 @@ class ClinicController extends Controller
 
     public function leadFollowUp(Lead $lead): View
     {
+        $this->authorizeLeadAccess(request()->user(), $lead);
+
         $lead->load(['contact']);
 
         $followUps = FollowUp::query()
@@ -856,6 +869,8 @@ class ClinicController extends Controller
 
     public function storeLeadFollowUp(Request $request, Lead $lead): RedirectResponse
     {
+        $this->authorizeLeadAccess($request->user(), $lead);
+
         $methodOptions = array_keys($this->followUpMethodOptions());
         $stageOptions = array_keys($this->followUpFormStageOptions());
 
@@ -1022,6 +1037,8 @@ class ClinicController extends Controller
             abort(404);
         }
 
+        $this->authorizeLeadAccess($request->user(), $followUp->lead);
+
         $validated = $request->validate([
             'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
             'next_follow_up_due_at' => ['nullable', 'date'],
@@ -1118,6 +1135,7 @@ class ClinicController extends Controller
     public function consultations(): View
     {
         $activities = LeadActivity::query()
+            ->visibleTo(request()->user())
             ->with(['lead.contact'])
             ->orderByDesc('happened_at')
             ->paginate(15);
@@ -1335,6 +1353,15 @@ class ClinicController extends Controller
         }
 
         return Carbon::parse($resolvedValue, 'Asia/Karachi')->utc();
+    }
+
+    private function authorizeLeadAccess(?User $user, Lead $lead): void
+    {
+        if ($lead->isVisibleTo($user)) {
+            return;
+        }
+
+        abort(403, 'You can only access your own leads.');
     }
 
     private function sendFollowUpRemarkToCustomer(

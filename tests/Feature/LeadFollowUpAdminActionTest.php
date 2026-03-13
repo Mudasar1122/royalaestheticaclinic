@@ -56,7 +56,7 @@ class LeadFollowUpAdminActionTest extends TestCase
             ],
         ]);
 
-        [$contact, $lead] = $this->createLead();
+        [$contact, $lead] = $this->createLead($user);
         FollowUp::query()->create([
             'lead_id' => $lead->id,
             'contact_id' => $contact->id,
@@ -76,6 +76,28 @@ class LeadFollowUpAdminActionTest extends TestCase
         $response->assertDontSee('data-modal-target="editLeadModal-' . $lead->id . '"', false);
         $response->assertDontSee('id="editLeadModal-' . $lead->id . '"', false);
         $response->assertDontSee('Edit Follow-up');
+    }
+
+    public function test_non_admin_cannot_view_other_users_lead_follow_up_page(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups'],
+            ],
+        ]);
+        $owner = User::factory()->create([
+            'role' => 'staff',
+        ]);
+
+        [, $lead] = $this->createLead($owner);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('clinicLeadFollowUp', $lead));
+
+        $response->assertForbidden();
     }
 
     public function test_admin_can_delete_lead_from_follow_up_page(): void
@@ -326,7 +348,7 @@ class LeadFollowUpAdminActionTest extends TestCase
     /**
      * @return array{0: Contact, 1: Lead}
      */
-    private function createLead(): array
+    private function createLead(?User $assignedUser = null): array
     {
         $contact = Contact::query()->create([
             'full_name' => 'Ayesha Khan',
@@ -341,6 +363,7 @@ class LeadFollowUpAdminActionTest extends TestCase
             'source_platform' => 'manual',
             'status' => 'open',
             'stage' => 'new',
+            'assigned_to_user_id' => $assignedUser?->id,
             'last_activity_at' => now(),
             'meta' => [
                 'origin' => 'manual_form',

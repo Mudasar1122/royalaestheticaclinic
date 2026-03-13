@@ -80,6 +80,7 @@ class ClinicManualLeadTest extends TestCase
             'source_platform' => 'manual',
             'stage' => 'new',
             'status' => 'open',
+            'assigned_to_user_id' => $user->id,
         ]);
         $followUp = \App\Models\FollowUp::query()->where('contact_id', $contact?->id)->first();
         $this->assertNotNull($followUp);
@@ -113,6 +114,7 @@ class ClinicManualLeadTest extends TestCase
             'source_platform' => 'manual',
             'status' => 'open',
             'stage' => 'new',
+            'assigned_to_user_id' => $user->id,
             'last_activity_at' => now(),
             'meta' => [
                 'origin' => 'manual_form',
@@ -160,6 +162,7 @@ class ClinicManualLeadTest extends TestCase
             'source_platform' => 'manual',
             'status' => 'open',
             'stage' => 'new',
+            'assigned_to_user_id' => $user->id,
             'last_activity_at' => now(),
             'meta' => [
                 'origin' => 'manual_form',

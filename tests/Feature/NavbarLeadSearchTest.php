@@ -46,8 +46,8 @@ class NavbarLeadSearchTest extends TestCase
             ],
         ]);
 
-        [$matchingContact, $matchingLead] = $this->createLead('Ayesha Khan', '+923001234567');
-        [$otherContact] = $this->createLead('Sana Malik', '+923009998887');
+        [$matchingContact, $matchingLead] = $this->createLead('Ayesha Khan', '+923001234567', $user);
+        [$otherContact] = $this->createLead('Sana Malik', '+923009998887', $user);
 
         $nameResponse = $this
             ->actingAs($user)
@@ -77,10 +77,35 @@ class NavbarLeadSearchTest extends TestCase
         $phoneResponse->assertSee('value="+923001234567"', false);
     }
 
+    public function test_staff_only_sees_assigned_leads_on_leads_page(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['view_leads', 'manage_followups'],
+            ],
+        ]);
+        $otherUser = User::factory()->create([
+            'role' => 'staff',
+        ]);
+
+        [$ownContact] = $this->createLead('Assigned Lead', '+923451112233', $user);
+        [$otherContact] = $this->createLead('Other Lead', '+923451112244', $otherUser);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('clinicLeads'));
+
+        $response->assertOk();
+        $response->assertSee($ownContact->full_name);
+        $response->assertDontSee($otherContact->full_name);
+    }
+
     /**
      * @return array{0: Contact, 1: Lead}
      */
-    private function createLead(string $fullName, string $phone): array
+    private function createLead(string $fullName, string $phone, ?User $assignedUser = null): array
     {
         $contact = Contact::query()->create([
             'full_name' => $fullName,
@@ -95,6 +120,7 @@ class NavbarLeadSearchTest extends TestCase
             'source_platform' => 'manual',
             'status' => 'open',
             'stage' => 'new',
+            'assigned_to_user_id' => $assignedUser?->id,
             'last_activity_at' => now(),
             'meta' => [
                 'origin' => 'manual_form',

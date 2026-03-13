@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -59,5 +60,24 @@ class Lead extends Model
     public function followUps(): HasMany
     {
         return $this->hasMany(FollowUp::class);
+    }
+
+    public function scopeVisibleTo(Builder $query, ?User $user): Builder
+    {
+        if ($user === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        return $query->where('assigned_to_user_id', $user->id);
+    }
+
+    public function isVisibleTo(?User $user): bool
+    {
+        return $user !== null
+            && ($user->isAdmin() || (int) $this->assigned_to_user_id === (int) $user->id);
     }
 }
