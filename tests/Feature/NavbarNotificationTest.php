@@ -116,6 +116,54 @@ class NavbarNotificationTest extends TestCase
         $response->assertSee(route('clinicLeadFollowUp', $lead), false);
     }
 
+    public function test_notification_page_rows_link_to_lead_follow_up_page(): void
+    {
+        $user = User::factory()->create([
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups'],
+            ],
+        ]);
+
+        $contact = Contact::query()->create([
+            'full_name' => 'Hina Malik',
+            'gender' => 'female',
+            'phone' => '+923451112233',
+            'normalized_phone' => '+923451112233',
+            'default_source' => 'manual',
+        ]);
+
+        $lead = Lead::query()->create([
+            'contact_id' => $contact->id,
+            'source_platform' => 'manual',
+            'status' => 'open',
+            'stage' => 'new',
+            'assigned_to_user_id' => $user->id,
+            'last_activity_at' => now(),
+            'meta' => [
+                'origin' => 'manual_form',
+            ],
+        ]);
+
+        FollowUp::query()->create([
+            'lead_id' => $lead->id,
+            'contact_id' => $contact->id,
+            'trigger_type' => 'manual_lead_create',
+            'stage_snapshot' => 'new',
+            'status' => 'pending',
+            'due_at' => now()->addHours(2),
+            'summary' => 'Add follow-up from notification page',
+            'assigned_to_user_id' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('notification'));
+
+        $response->assertOk();
+        $response->assertSee('data-notification-url="'.route('clinicLeadFollowUp', $lead).'"', false);
+    }
+
     public function test_staff_does_not_see_notifications_for_other_users_leads(): void
     {
         $user = User::factory()->create([

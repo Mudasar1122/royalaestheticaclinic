@@ -6,6 +6,36 @@
     $notifications = isset($crmNotifications) ? collect($crmNotifications) : collect();
     $notificationCount = $crmNotificationCount ?? $notifications->count();
     $highlightedCount = $crmHighlightedNotificationCount ?? 0;
+    $script = <<<'SCRIPT'
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-notification-url]').forEach(function (row) {
+        var url = row.getAttribute('data-notification-url');
+
+        if (!url) {
+            return;
+        }
+
+        row.addEventListener('click', function (event) {
+            if (event.target.closest('a, button, input, select, textarea, label, summary')) {
+                return;
+            }
+
+            window.location.href = url;
+        });
+
+        row.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') {
+                return;
+            }
+
+            event.preventDefault();
+            window.location.href = url;
+        });
+    });
+});
+</script>
+SCRIPT;
 @endphp
 
 @section('content')
@@ -49,7 +79,18 @@
                     </thead>
                     <tbody>
                         @forelse ($notifications as $notification)
-                            <tr class="{{ !empty($notification['is_highlighted']) ? 'bg-danger-50 dark:bg-danger-600/10' : '' }}">
+                            @php
+                                $notificationUrl = $notification['url'] ?? null;
+                            @endphp
+                            <tr
+                                class="{{ !empty($notification['is_highlighted']) ? 'bg-danger-50 dark:bg-danger-600/10' : '' }} {{ $notificationUrl ? 'cursor-pointer transition hover:bg-primary-50 dark:hover:bg-primary-600/10 focus:outline-none focus:ring-2 focus:ring-primary-500/30' : '' }}"
+                                @if ($notificationUrl)
+                                    data-notification-url="{{ $notificationUrl }}"
+                                    tabindex="0"
+                                    role="link"
+                                    aria-label="Open {{ $notification['title'] ?? 'notification' }}"
+                                @endif
+                            >
                                 <td>
                                     <div class="flex flex-col">
                                         <span class="font-medium {{ !empty($notification['is_highlighted']) ? 'text-danger-700 dark:text-danger-300' : 'text-neutral-700 dark:text-neutral-100' }}">
