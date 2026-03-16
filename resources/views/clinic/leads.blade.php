@@ -127,7 +127,7 @@
                             <th>Created At</th>
                             <th>Procedure of Interest</th>
                             <th>Stage</th>
-                            <th>Last Follow-up</th>
+                            <th>Follower</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
@@ -193,13 +193,7 @@
                                         {{ $stageLabel }}
                                     </span>
                                 </td>
-                                <td>
-                                    @if ($lead->last_follow_up_at)
-                                        {{ \Illuminate\Support\Carbon::parse((string) $lead->last_follow_up_at)->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
-                                    @else
-                                        -
-                                    @endif
-                                </td>
+                                <td>{{ $lead->assignedTo?->name ?? 'Unassigned' }}</td>
                                 <td class="text-center">
                                     @php
                                         $showAddFollowUp = $canManageFollowups;
@@ -714,7 +708,7 @@
             const table = document.getElementById('clinic-leads-table');
 
             if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
-                new simpleDatatables.DataTable('#clinic-leads-table', {
+                const leadsTable = new simpleDatatables.DataTable('#clinic-leads-table', {
                     searchable: true,
                     fixedHeight: false,
                     perPage: 10,
@@ -729,6 +723,10 @@
                         info: 'Showing {start} to {end} of {rows} entries',
                     },
                 });
+
+                if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
+                    window.royalUi.enableDatatableAllOption(leadsTable);
+                }
             }
 
             const getDropdowns = function () {

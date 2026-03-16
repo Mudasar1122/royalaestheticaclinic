@@ -338,7 +338,7 @@
             });
 
             if (document.getElementById('deleted-leads-table') && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
-                new simpleDatatables.DataTable('#deleted-leads-table', {
+                const deletedLeadsTable = new simpleDatatables.DataTable('#deleted-leads-table', {
                     searchable: true,
                     fixedHeight: false,
                     perPage: 10,
@@ -350,6 +350,10 @@
                         info: 'Showing {start} to {end} of {rows} entries',
                     },
                 });
+
+                if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
+                    window.royalUi.enableDatatableAllOption(deletedLeadsTable);
+                }
             }
         });
     </script>

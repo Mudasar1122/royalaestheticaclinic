@@ -498,7 +498,7 @@
             const table = document.getElementById('followup-grid-table');
 
             if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
-                new simpleDatatables.DataTable('#followup-grid-table', {
+                const appointmentsTable = new simpleDatatables.DataTable('#followup-grid-table', {
                     searchable: true,
                     fixedHeight: false,
                     perPage: 10,
@@ -513,6 +513,10 @@
                         info: 'Showing {start} to {end} of {rows} entries',
                     },
                 });
+
+                if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
+                    window.royalUi.enableDatatableAllOption(appointmentsTable);
+                }
             }
 
             const getDropdowns = function () {

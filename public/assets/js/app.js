@@ -18,6 +18,53 @@ window.royalUi.resetActionDropdown = function (menu) {
   menu.style.maxWidth = '';
 };
 
+window.royalUi.enableDatatableAllOption = function (datatable, label) {
+  if (!datatable || typeof datatable.on !== 'function') {
+    return;
+  }
+
+  var optionLabel = typeof label === 'string' && label.trim() ? label.trim() : 'All';
+
+  var syncSelector = function () {
+    var wrapper = datatable.wrapperDOM;
+
+    if (!(wrapper instanceof Element)) {
+      return;
+    }
+
+    var selector = wrapper.querySelector('.datatable-selector');
+
+    if (!(selector instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    var allOption = Array.from(selector.options).find(function (option) {
+      return option.value === '-1';
+    });
+
+    if (!allOption) {
+      allOption = document.createElement('option');
+      allOption.value = '-1';
+      allOption.textContent = optionLabel;
+      selector.appendChild(allOption);
+    } else if (allOption.textContent !== optionLabel) {
+      allOption.textContent = optionLabel;
+    }
+
+    if (datatable.options && typeof datatable.options.perPage === 'number' && datatable.options.perPage <= 0) {
+      selector.value = '-1';
+    }
+  };
+
+  if (datatable._royalAllOptionBound !== true) {
+    datatable.on('datatable.update', syncSelector);
+    datatable.on('datatable.perpage', syncSelector);
+    datatable._royalAllOptionBound = true;
+  }
+
+  syncSelector();
+};
+
 window.royalUi.placeActionDropdown = function (button, menu) {
   if (!(button instanceof Element) || !(menu instanceof Element)) {
     return;

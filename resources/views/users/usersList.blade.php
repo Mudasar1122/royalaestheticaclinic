@@ -251,7 +251,7 @@
             const table = document.getElementById('users-grid-table');
 
             if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
-                new simpleDatatables.DataTable('#users-grid-table', {
+                const usersTable = new simpleDatatables.DataTable('#users-grid-table', {
                     searchable: true,
                     fixedHeight: false,
                     perPage: 10,
@@ -266,6 +266,10 @@
                         info: 'Showing {start} to {end} of {rows} entries',
                     },
                 });
+
+                if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
+                    window.royalUi.enableDatatableAllOption(usersTable);
+                }
             }
 
             const getDropdowns = function () {

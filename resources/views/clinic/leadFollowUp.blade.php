@@ -1375,7 +1375,7 @@
             }
 
             if (document.getElementById('lead-followup-history-table') && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
-                new simpleDatatables.DataTable('#lead-followup-history-table', {
+                const followupHistoryTable = new simpleDatatables.DataTable('#lead-followup-history-table', {
                     searchable: true,
                     fixedHeight: false,
                     perPage: 10,
@@ -1387,6 +1387,10 @@
                         info: 'Showing {start} to {end} of {rows} entries',
                     },
                 });
+
+                if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
+                    window.royalUi.enableDatatableAllOption(followupHistoryTable);
+                }
             }
         });
     </script>
