@@ -111,6 +111,44 @@ class User extends Authenticatable
     /**
      * @return array<int, string>
      */
+    public function explicitModulePermissions(string $module): array
+    {
+        $permissionMap = is_array($this->module_permissions) ? $this->module_permissions : [];
+        $modulePermissions = $permissionMap[$module] ?? [];
+
+        if (!is_array($modulePermissions)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn ($permission): string => (string) $permission,
+            $modulePermissions
+        )));
+    }
+
+    public function hasExplicitModulePermission(string $module, string $permission): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        return in_array($permission, $this->explicitModulePermissions($module), true);
+    }
+
+    public function leadVisibilityScope(): string
+    {
+        if ($this->isAdmin()) {
+            return 'all';
+        }
+
+        return $this->hasExplicitModulePermission('lead_management', 'view_all_leads')
+            ? 'all'
+            : 'own';
+    }
+
+    /**
+     * @return array<int, string>
+     */
     public function moduleAccessLabels(): array
     {
         $moduleOptions = [

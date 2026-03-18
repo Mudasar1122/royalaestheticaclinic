@@ -81,7 +81,11 @@
                                                 <span class="text-xs text-secondary-light">{{ $lead->contact?->phone ?? $lead->contact?->email ?? 'No contact info' }}</span>
                                             </div>
                                         </td>
-                                        <td>{{ $lead->source_platform === 'manual' ? 'Walk In Lead' : ucfirst(str_replace('_', ' ', $lead->source_platform)) }}</td>
+                                        <td>{{ match ((string) $lead->source_platform) {
+                                            'manual' => 'Walk In Lead',
+                                            'meta' => 'Lead From Meta',
+                                            default => ucfirst(str_replace('_', ' ', (string) $lead->source_platform)),
+                                        } }}</td>
                                         <td>
                                             <span class="px-3 py-1 rounded-full text-sm font-medium bg-info-100 dark:bg-info-600/25 text-info-600 dark:text-info-300">
                                                 {{ ucfirst($lead->stage) }}

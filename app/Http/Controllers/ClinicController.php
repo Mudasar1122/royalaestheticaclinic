@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class ClinicController extends Controller
@@ -47,6 +48,14 @@ class ClinicController extends Controller
         $leadsQuery = Lead::query()
             ->visibleTo($user)
             ->with(['contact', 'assignedTo'])
+            ->addSelect([
+                'next_follow_up_at' => FollowUp::query()
+                    ->select('due_at')
+                    ->whereColumn('lead_id', 'leads.id')
+                    ->where('status', 'pending')
+                    ->orderBy('due_at')
+                    ->limit(1),
+            ])
             ->withMax('followUps as last_follow_up_at', 'due_at')
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $query->where(function (Builder $nested) use ($search): void {
@@ -128,6 +137,7 @@ class ClinicController extends Controller
     public function storeManualLead(Request $request): RedirectResponse
     {
         $genderKeys = array_keys($this->genderOptions());
+        $sourceKeys = array_keys($this->sourceOptions());
         $procedureKeys = array_keys($this->procedureInterestOptions());
 
         $validated = $request->validate([
@@ -135,7 +145,7 @@ class ClinicController extends Controller
             'gender' => ['required', 'string', Rule::in($genderKeys)],
             'email' => ['nullable', 'email', 'max:120'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^\+92[1-9][0-9]{7,12}$/'],
-            'source_platform' => ['required', 'string', 'in:facebook,instagram,whatsapp,tiktok,google_business,manual'],
+            'source_platform' => ['required', 'string', Rule::in($sourceKeys)],
             'stage' => ['required', 'string', 'in:new'],
             'remarks' => ['nullable', 'string', 'max:2000'],
             'follow_up_due_at' => ['required', 'date'],
@@ -263,7 +273,7 @@ class ClinicController extends Controller
         $this->authorizeLeadAccess($request->user(), $lead);
 
         $validated = $request->validate([
-            'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
+            'stage' => ['required', 'string', Rule::in($this->leadStageValidationOptions())],
             'follow_up_due_at' => ['nullable', 'date'],
             'follow_up_summary' => ['nullable', 'string', 'max:255'],
         ]);
@@ -281,11 +291,13 @@ class ClinicController extends Controller
             abort(403, 'You do not have permission to mark leads as booked.');
         }
 
+        $this->ensureProcedureAttemptedTransitionAllowed($lead, $newStage);
+
         DB::transaction(function () use ($lead, $validated, $newStage, $isClosed, $followUpDueAt, &$createdFollowUp): void {
             $lead->forceFill([
                 'stage' => $newStage,
                 'status' => $isClosed ? 'closed' : 'open',
-                'closed_at' => $isClosed ? now() : null,
+                'closed_at' => $isClosed ? ($lead->closed_at ?? now()) : null,
                 'last_activity_at' => now(),
             ])->save();
 
@@ -333,6 +345,7 @@ class ClinicController extends Controller
         $this->authorizeLeadAccess($request->user(), $lead);
 
         $genderKeys = array_keys($this->genderOptions());
+        $sourceKeys = array_keys($this->sourceOptions());
         $procedureKeys = array_keys($this->procedureInterestOptions());
 
         $validated = $request->validate([
@@ -340,8 +353,8 @@ class ClinicController extends Controller
             'gender' => ['required', 'string', Rule::in($genderKeys)],
             'email' => ['nullable', 'email', 'max:120'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'source_platform' => ['required', 'string', 'in:facebook,instagram,whatsapp,tiktok,google_business,manual'],
-            'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
+            'source_platform' => ['required', 'string', Rule::in($sourceKeys)],
+            'stage' => ['required', 'string', Rule::in($this->leadStageValidationOptions())],
             'status' => ['required', 'string', 'in:open,closed'],
             'procedure_interests_submitted' => ['nullable', 'boolean'],
             'procedure_interests' => ['nullable', 'array'],
@@ -380,6 +393,8 @@ class ClinicController extends Controller
         ) {
             abort(403, 'You do not have permission to mark leads as booked.');
         }
+
+        $this->ensureProcedureAttemptedTransitionAllowed($lead, $normalizedStage);
 
         DB::transaction(function () use (
             $lead,
@@ -814,6 +829,14 @@ class ClinicController extends Controller
         $leads = Lead::query()
             ->with(['contact', 'assignedTo'])
             ->withCount('followUps')
+            ->addSelect([
+                'next_follow_up_at' => FollowUp::query()
+                    ->select('due_at')
+                    ->whereColumn('lead_id', 'leads.id')
+                    ->where('status', 'pending')
+                    ->orderBy('due_at')
+                    ->limit(1),
+            ])
             ->withMax('followUps as last_follow_up_at', 'due_at')
             ->whereIn('id', $leadIdsSubQuery)
             ->orderByDesc('last_follow_up_at')
@@ -881,6 +904,7 @@ class ClinicController extends Controller
 
         $nextStage = $this->normalizeLeadStage((string) $validated['stage']);
         $isClosedStage = $this->isClosedLeadStage($nextStage);
+        $stageRequiresFollowUpDetails = $this->stageRequiresFollowUpDetails($nextStage);
 
         if (
             $nextStage === 'booked'
@@ -889,14 +913,16 @@ class ClinicController extends Controller
             abort(403, 'You do not have permission to mark leads as booked.');
         }
 
+        $this->ensureProcedureAttemptedTransitionAllowed($lead, $nextStage);
+
         $validated = array_merge($validated, $request->validate([
             'next_follow_up_due_at' => [
-                Rule::requiredIf(!$isClosedStage),
+                Rule::requiredIf($stageRequiresFollowUpDetails),
                 'nullable',
                 'date',
             ],
             'remarks' => [
-                Rule::requiredIf(!$isClosedStage),
+                Rule::requiredIf($stageRequiresFollowUpDetails),
                 'nullable',
                 'string',
                 'max:1000',
@@ -909,11 +935,11 @@ class ClinicController extends Controller
         $resolvedAt = now();
         $remarks = trim((string) ($validated['remarks'] ?? ''));
 
-        $nextDueAt = !$isClosedStage && !empty($validated['next_follow_up_due_at'])
+        $nextDueAt = $stageRequiresFollowUpDetails && !empty($validated['next_follow_up_due_at'])
             ? $this->parsePakistanDateTimeToUtc((string) $validated['next_follow_up_due_at'])
             : null;
 
-        DB::transaction(function () use ($lead, $validated, $nextStage, $isClosedStage, $resolvedAt, $nextDueAt, $remarks): void {
+        DB::transaction(function () use ($lead, $validated, $nextStage, $isClosedStage, $stageRequiresFollowUpDetails, $resolvedAt, $nextDueAt, $remarks): void {
             FollowUp::query()
                 ->where('lead_id', $lead->id)
                 ->where('status', 'pending')
@@ -929,12 +955,14 @@ class ClinicController extends Controller
                 'contact_id' => $lead->contact_id,
                 'trigger_type' => (string) $validated['follow_up_method'],
                 'stage_snapshot' => $nextStage,
-                'status' => $isClosedStage ? 'completed' : 'pending',
-                'due_at' => $isClosedStage ? $resolvedAt : $nextDueAt,
-                'completed_at' => $isClosedStage ? $resolvedAt : null,
-                'summary' => $remarks !== '' ? $remarks : ($isClosedStage
-                    ? 'Follow-up closed from follow-up page'
-                    : 'Next follow-up scheduled from follow-up page'),
+                'status' => $stageRequiresFollowUpDetails ? 'pending' : 'completed',
+                'due_at' => $stageRequiresFollowUpDetails ? $nextDueAt : $resolvedAt,
+                'completed_at' => $stageRequiresFollowUpDetails ? null : $resolvedAt,
+                'summary' => $remarks !== ''
+                    ? $remarks
+                    : ($stageRequiresFollowUpDetails
+                        ? 'Next follow-up scheduled from follow-up page'
+                        : 'Follow-up closed from follow-up page'),
                 'metadata' => [
                     'source' => 'lead_follow_up_page',
                     'method' => (string) $validated['follow_up_method'],
@@ -982,6 +1010,7 @@ class ClinicController extends Controller
 
         $nextStage = $this->normalizeLeadStage((string) $validated['stage']);
         $isClosedStage = $this->isClosedLeadStage($nextStage);
+        $stageRequiresFollowUpDetails = $this->stageRequiresFollowUpDetails($nextStage);
         $nextDueAt = !empty($validated['next_follow_up_due_at'])
             ? $this->parsePakistanDateTimeToUtc((string) $validated['next_follow_up_due_at'])
             : null;
@@ -994,7 +1023,13 @@ class ClinicController extends Controller
             abort(403, 'You do not have permission to mark leads as booked.');
         }
 
-        if (!$isClosedStage && empty($nextDueAt)) {
+        $lead = $followUp->lead;
+
+        if ($lead !== null) {
+            $this->ensureProcedureAttemptedTransitionAllowed($lead, $nextStage);
+        }
+
+        if ($stageRequiresFollowUpDetails && empty($nextDueAt)) {
             return back()
                 ->withErrors(['next_follow_up_due_at' => 'Next follow-up date and time is required.'])
                 ->withInput();
@@ -1040,7 +1075,7 @@ class ClinicController extends Controller
         $this->authorizeLeadAccess($request->user(), $followUp->lead);
 
         $validated = $request->validate([
-            'stage' => ['required', 'string', 'in:new,initial,contacted,visit,negotiation,proposal,booked,confirmed,not_interested'],
+            'stage' => ['required', 'string', Rule::in($this->leadStageValidationOptions())],
             'next_follow_up_due_at' => ['nullable', 'date'],
             'remarks' => ['nullable', 'string', 'max:1000'],
             'send_remarks_to_customer' => ['nullable', 'boolean'],
@@ -1061,6 +1096,8 @@ class ClinicController extends Controller
         ) {
             abort(403, 'You do not have permission to mark leads as booked.');
         }
+
+        $this->ensureProcedureAttemptedTransitionAllowed($followUp->lead, $nextStage);
 
         if (!$isClosedStage && empty($nextDueAt)) {
             return back()
@@ -1171,6 +1208,7 @@ class ClinicController extends Controller
             'visit' => 'Visit',
             'negotiation' => 'Proposal & Negotiation',
             'booked' => 'Booked',
+            'procedure_attempted' => 'Procedure Attempted',
             'not_interested' => 'Not Interested',
         ];
     }
@@ -1186,6 +1224,7 @@ class ClinicController extends Controller
             'whatsapp' => 'WhatsApp',
             'tiktok' => 'TikTok',
             'google_business' => 'Google Business',
+            'meta' => 'Lead From Meta',
             'manual' => 'Walk In Lead',
         ];
     }
@@ -1241,6 +1280,7 @@ class ClinicController extends Controller
             'contacted' => 'Contacted',
             'negotiation' => 'Negotiation & Proposal',
             'booked' => 'Booked',
+            'procedure_attempted' => 'Procedure Attempted',
             'not_interested' => 'Not Interested',
         ];
     }
@@ -1295,6 +1335,10 @@ class ClinicController extends Controller
                 'label' => 'Booked',
                 'stages' => ['booked', 'confirmed'],
             ],
+            'procedure_attempted' => [
+                'label' => 'Procedure Attempted',
+                'stages' => ['procedure_attempted'],
+            ],
             'not_interested' => [
                 'label' => 'Not Interested',
                 'stages' => ['not_interested'],
@@ -1314,7 +1358,48 @@ class ClinicController extends Controller
 
     private function isClosedLeadStage(string $stage): bool
     {
-        return in_array($stage, ['booked', 'not_interested'], true);
+        return in_array($stage, ['booked', 'procedure_attempted', 'not_interested'], true);
+    }
+
+    private function stageRequiresFollowUpDetails(string $stage): bool
+    {
+        return !in_array($stage, ['procedure_attempted', 'not_interested'], true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function leadStageValidationOptions(): array
+    {
+        return [
+            'new',
+            'initial',
+            'contacted',
+            'visit',
+            'negotiation',
+            'proposal',
+            'booked',
+            'confirmed',
+            'procedure_attempted',
+            'not_interested',
+        ];
+    }
+
+    private function ensureProcedureAttemptedTransitionAllowed(?Lead $lead, string $nextStage): void
+    {
+        if ($nextStage !== 'procedure_attempted' || $lead === null) {
+            return;
+        }
+
+        $currentStage = $this->normalizeLeadStage((string) $lead->stage);
+
+        if (in_array($currentStage, ['booked', 'procedure_attempted'], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'stage' => 'Procedure Attempted can only be selected after the lead is booked.',
+        ]);
     }
 
     private function normalizePhone(string $value): ?string

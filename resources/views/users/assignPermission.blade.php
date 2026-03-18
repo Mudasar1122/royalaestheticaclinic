@@ -63,6 +63,12 @@
                                     </label>
                                 </div>
 
+                                @if ($moduleKey === 'lead_management')
+                                    <p class="text-xs text-secondary-light mb-3">
+                                        Use All Leads or Own Leads Only to control which leads this user can see.
+                                    </p>
+                                @endif
+
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     @foreach ($permissionOptions[$moduleKey] as $operationKey => $operationLabel)
                                         <label class="form-check style-check flex items-center gap-2">

@@ -76,7 +76,8 @@
                             <th>Procedure of Interest</th>
                             <th>Stage</th>
                             <th>Last Follow-up</th>
-                            <th>Follower</th>
+                            <th>Next Follow Date</th>
+                            <th>User</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
@@ -116,6 +117,12 @@
                                 $leadSearchValue = trim((string) ($lead->contact?->phone ?? '')) !== ''
                                     ? (string) $lead->contact?->phone
                                     : (string) ($lead->contact?->full_name ?? '');
+                                $lastFollowUpAt = $lead->last_follow_up_at
+                                    ? \Illuminate\Support\Carbon::parse((string) $lead->last_follow_up_at)->timezone('Asia/Karachi')
+                                    : null;
+                                $nextFollowUpAt = $lead->next_follow_up_at
+                                    ? \Illuminate\Support\Carbon::parse((string) $lead->next_follow_up_at)->timezone('Asia/Karachi')
+                                    : null;
                             @endphp
                             <tr>
                                 <td>
@@ -144,8 +151,18 @@
                                     </span>
                                 </td>
                                 <td>
-                                    @if ($lead->last_follow_up_at)
-                                        {{ \Illuminate\Support\Carbon::parse((string) $lead->last_follow_up_at)->timezone('Asia/Karachi')->format('d M Y') }}
+                                    @if ($lastFollowUpAt)
+                                        {{ $lastFollowUpAt->format('d M Y') }}
+                                    @else
+                                        -
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($nextFollowUpAt)
+                                        <div class="followup-date-stack">
+                                            <span>{{ $nextFollowUpAt->format('d M Y') }}</span>
+                                            <span class="followup-date-stack__meta">{{ $nextFollowUpAt->format('h:i A') }} PKT</span>
+                                        </div>
                                     @else
                                         -
                                     @endif
@@ -154,7 +171,7 @@
                                 <td class="text-center">
                                     @php
                                         $showAddFollowUp = true;
-                                        $showMarkBooked = $canMarkBooked && $normalizedStage !== 'booked';
+                                        $showMarkBooked = $canMarkBooked && !in_array($normalizedStage, ['booked', 'procedure_attempted'], true);
                                     @endphp
                                     @if ($showAddFollowUp || $showMarkBooked)
                                         <div class="followup-action-dropdown" data-action-dropdown>
@@ -203,7 +220,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center py-10 text-secondary-light">No follow-ups available in this queue.</td>
+                                <td colspan="8" class="text-center py-10 text-secondary-light">No follow-ups available in this queue.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -333,39 +350,44 @@
 
         #followup-grid-table th:nth-child(1),
         #followup-grid-table td:nth-child(1) {
-            width: 16%;
+            width: 15%;
         }
 
         #followup-grid-table th:nth-child(2),
         #followup-grid-table td:nth-child(2) {
-            width: 13%;
+            width: 12%;
         }
 
         #followup-grid-table th:nth-child(3),
         #followup-grid-table td:nth-child(3) {
-            width: 23%;
+            width: 21%;
             text-align: left;
             white-space: normal !important;
         }
 
         #followup-grid-table th:nth-child(4),
         #followup-grid-table td:nth-child(4) {
-            width: 10%;
+            width: 11%;
         }
 
         #followup-grid-table th:nth-child(5),
         #followup-grid-table td:nth-child(5) {
-            width: 12%;
+            width: 11%;
         }
 
         #followup-grid-table th:nth-child(6),
         #followup-grid-table td:nth-child(6) {
-            width: 14%;
+            width: 12%;
         }
 
         #followup-grid-table th:nth-child(7),
         #followup-grid-table td:nth-child(7) {
-            width: 12%;
+            width: 8%;
+        }
+
+        #followup-grid-table th:nth-child(8),
+        #followup-grid-table td:nth-child(8) {
+            width: 10%;
             text-align: center;
             white-space: nowrap !important;
         }
@@ -374,6 +396,17 @@
             white-space: nowrap;
             display: inline-flex;
             align-items: center;
+        }
+
+        .followup-date-stack {
+            display: grid;
+            gap: 2px;
+        }
+
+        .followup-date-stack__meta {
+            font-size: 0.75rem;
+            color: #667085;
+            white-space: nowrap;
         }
 
         .followup-action-dropdown {

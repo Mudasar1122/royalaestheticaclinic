@@ -409,7 +409,7 @@ class HomeController extends Controller
                 'new' => ['new', 'initial'],
                 'contacted' => ['contacted', 'visit'],
                 'negotiation' => ['negotiation', 'proposal'],
-                'booked' => ['booked', 'confirmed'],
+                'booked' => ['booked', 'confirmed', 'procedure_attempted'],
                 'not_interested' => ['not_interested'],
                 default => [],
             };

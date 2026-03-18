@@ -12,6 +12,7 @@
         'visit' => 'bg-primary-100 dark:bg-primary-600/20 text-primary-600 dark:text-primary-300',
         'negotiation' => 'bg-purple-100 dark:bg-purple-600/20 text-purple-600 dark:text-purple-300',
         'booked' => 'bg-success-100 dark:bg-success-600/20 text-success-600 dark:text-success-300',
+        'procedure_attempted' => 'bg-info-100 dark:bg-info-600/20 text-info-600 dark:text-info-300',
     ];
 
     $normalizeStage = static fn (string $stage): string => match ($stage) {
@@ -127,7 +128,8 @@
                             <th>Created At</th>
                             <th>Procedure of Interest</th>
                             <th>Stage</th>
-                            <th>Follower</th>
+                            <th>Next Follow Date</th>
+                            <th>User</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
@@ -157,6 +159,9 @@
                                     ->filter(static fn (string $value): bool => trim($value) !== '')
                                     ->values()
                                     ->all();
+                                $nextFollowUpAt = $lead->next_follow_up_at
+                                    ? \Illuminate\Support\Carbon::parse((string) $lead->next_follow_up_at)->timezone('Asia/Karachi')
+                                    : null;
                             @endphp
                             <tr>
                                 <td>
@@ -189,15 +194,25 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <span class="px-3 py-1 rounded-full text-xs font-semibold {{ $stageBadgeClasses[$normalizedStage] ?? 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200' }}">
+                                    <span class="followup-stage-pill px-3 py-1 rounded-full text-xs font-semibold {{ $stageBadgeClasses[$normalizedStage] ?? 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200' }}">
                                         {{ $stageLabel }}
                                     </span>
+                                </td>
+                                <td>
+                                    @if ($nextFollowUpAt)
+                                        <div class="followup-date-stack">
+                                            <span>{{ $nextFollowUpAt->format('d M Y') }}</span>
+                                            <span class="followup-date-stack__meta">{{ $nextFollowUpAt->format('h:i A') }} PKT</span>
+                                        </div>
+                                    @else
+                                        -
+                                    @endif
                                 </td>
                                 <td>{{ $lead->assignedTo?->name ?? 'Unassigned' }}</td>
                                 <td class="text-center">
                                     @php
                                         $showAddFollowUp = $canManageFollowups;
-                                        $showMarkBooked = $canMarkBooked && $normalizedStage !== 'booked';
+                                        $showMarkBooked = $canMarkBooked && !in_array($normalizedStage, ['booked', 'procedure_attempted'], true);
                                     @endphp
                                     @if ($showAddFollowUp || $showMarkBooked)
                                         <div class="followup-action-dropdown" data-action-dropdown>
@@ -244,7 +259,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="text-center py-10 text-secondary-light">No leads found.</td>
+                                <td colspan="9" class="text-center py-10 text-secondary-light">No leads found.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -356,7 +371,7 @@
                                         <option value="open" @selected($lead->status === 'open')>Open</option>
                                         <option value="closed" @selected($lead->status === 'closed')>Closed</option>
                                     </select>
-                                    <p class="text-xs text-secondary-light mt-1 mb-0">Booked stage will automatically set status to Closed.</p>
+                                    <p class="text-xs text-secondary-light mt-1 mb-0">Booked and Procedure Attempted stages will automatically set status to Closed.</p>
                                 </div>
                                 <div class="col-span-12 md:col-span-6">
                                     <label class="form-label">Next Follow-up (Optional)</label>
@@ -541,34 +556,34 @@
 
         #clinic-leads-table th:nth-child(1),
         #clinic-leads-table td:nth-child(1) {
-            width: 15%;
+            width: 14%;
         }
 
         #clinic-leads-table th:nth-child(2),
         #clinic-leads-table td:nth-child(2) {
-            width: 13%;
+            width: 12%;
             white-space: nowrap !important;
         }
 
         #clinic-leads-table th:nth-child(3),
         #clinic-leads-table td:nth-child(3) {
-            width: 11%;
+            width: 10%;
         }
 
         #clinic-leads-table th:nth-child(4),
         #clinic-leads-table td:nth-child(4) {
-            width: 13%;
+            width: 12%;
         }
 
         #clinic-leads-table th:nth-child(5),
         #clinic-leads-table td:nth-child(5) {
-            width: 22%;
+            width: 18%;
             text-align: left;
         }
 
         #clinic-leads-table th:nth-child(6),
         #clinic-leads-table td:nth-child(6) {
-            width: 8%;
+            width: 12%;
         }
 
         #clinic-leads-table th:nth-child(7),
@@ -578,8 +593,36 @@
 
         #clinic-leads-table th:nth-child(8),
         #clinic-leads-table td:nth-child(8) {
+            width: 4%;
+        }
+
+        #clinic-leads-table th:nth-child(9),
+        #clinic-leads-table td:nth-child(9) {
             width: 8%;
             white-space: nowrap !important;
+        }
+
+        .followup-date-stack {
+            display: grid;
+            gap: 2px;
+        }
+
+        .followup-date-stack__meta {
+            font-size: 0.75rem;
+            color: #667085;
+            white-space: nowrap;
+        }
+
+        .followup-stage-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 100%;
+            text-align: center;
+            line-height: 1.25;
+            white-space: normal;
+            word-break: normal !important;
+            overflow-wrap: normal;
         }
 
         .procedure-stack {

@@ -113,12 +113,11 @@ class UsersController extends Controller
             $allowedOperations = array_keys($permissionOptions[$moduleKey] ?? []);
             $selectedOperations = is_array($rawPermissions[$moduleKey] ?? null) ? $rawPermissions[$moduleKey] : [];
 
-            $resolvedPermissions[$moduleKey] = collect($selectedOperations)
-                ->map(static fn ($operation): string => (string) $operation)
-                ->filter(static fn (string $operation): bool => in_array($operation, $allowedOperations, true))
-                ->unique()
-                ->values()
-                ->all();
+            $resolvedPermissions[$moduleKey] = $this->normalizeModulePermissions(
+                (string) $moduleKey,
+                $selectedOperations,
+                $allowedOperations
+            );
         }
 
         $user->forceFill([
@@ -354,6 +353,8 @@ class UsersController extends Controller
         return [
             'lead_management' => [
                 'view_leads' => 'View Leads',
+                'view_all_leads' => 'All Leads',
+                'view_own_leads' => 'Own Leads Only',
                 'create_lead' => 'Create Lead',
                 'edit_lead' => 'Edit Lead',
                 'manage_followups' => 'Manage Follow-ups',
@@ -396,12 +397,11 @@ class UsersController extends Controller
      */
     private function defaultModulePermissions(array $modules): array
     {
-        $permissionOptions = $this->modulePermissionOptions();
         $resolved = [];
 
         foreach ($modules as $moduleKey) {
             $moduleName = (string) $moduleKey;
-            $resolved[$moduleName] = array_keys($permissionOptions[$moduleName] ?? []);
+            $resolved[$moduleName] = $this->defaultPermissionsForModule($moduleName);
         }
 
         return $resolved;
@@ -430,16 +430,11 @@ class UsersController extends Controller
                 : null;
 
             if ($storedOperations === null) {
-                $resolved[$moduleName] = $allowedOperations;
+                $resolved[$moduleName] = $this->defaultPermissionsForModule($moduleName);
                 continue;
             }
 
-            $resolved[$moduleName] = collect($storedOperations)
-                ->map(static fn ($operation): string => (string) $operation)
-                ->filter(static fn (string $operation): bool => in_array($operation, $allowedOperations, true))
-                ->unique()
-                ->values()
-                ->all();
+            $resolved[$moduleName] = $this->normalizeModulePermissions($moduleName, $storedOperations, $allowedOperations);
         }
 
         return $resolved;
@@ -471,18 +466,70 @@ class UsersController extends Controller
                 : null;
 
             if ($moduleStoredPermissions === null) {
-                $resolved[$moduleName] = $allowedOperations;
+                $resolved[$moduleName] = $this->defaultPermissionsForModule($moduleName);
                 continue;
             }
 
-            $resolved[$moduleName] = collect($moduleStoredPermissions)
-                ->map(static fn ($operation): string => (string) $operation)
-                ->filter(static fn (string $operation): bool => in_array($operation, $allowedOperations, true))
-                ->unique()
-                ->values()
-                ->all();
+            $resolved[$moduleName] = $this->normalizeModulePermissions(
+                $moduleName,
+                $moduleStoredPermissions,
+                $allowedOperations
+            );
         }
 
         return $resolved;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function defaultPermissionsForModule(string $module): array
+    {
+        $permissions = array_keys($this->modulePermissionOptions()[$module] ?? []);
+
+        if ($module === 'lead_management') {
+            $permissions = array_values(array_filter(
+                $permissions,
+                static fn (string $permission): bool => $permission !== 'view_all_leads'
+            ));
+        }
+
+        return $permissions;
+    }
+
+    /**
+     * @param  array<int, string>  $allowedOperations
+     * @param  array<int, string>|mixed  $operations
+     * @return array<int, string>
+     */
+    private function normalizeModulePermissions(string $module, $operations, array $allowedOperations): array
+    {
+        $resolved = collect(is_array($operations) ? $operations : [])
+            ->map(static fn ($operation): string => (string) $operation)
+            ->filter(static fn (string $operation): bool => in_array($operation, $allowedOperations, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if (
+            $module === 'lead_management'
+            && !in_array('view_all_leads', $resolved, true)
+            && !in_array('view_own_leads', $resolved, true)
+        ) {
+            $resolved[] = 'view_own_leads';
+        }
+
+        if (
+            $module === 'lead_management'
+            && in_array('view_all_leads', $resolved, true)
+            && in_array('view_own_leads', $resolved, true)
+        ) {
+            $resolved = array_values(array_filter(
+                $resolved,
+                static fn (string $permission): bool => $permission !== 'view_own_leads'
+            ));
+        }
+
+        return array_values(array_unique($resolved));
     }
 }

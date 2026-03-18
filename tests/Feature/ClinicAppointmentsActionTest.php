@@ -33,12 +33,18 @@ class ClinicAppointmentsActionTest extends TestCase
         $response->assertSee($contact->full_name);
         $response->assertSee($contact->phone);
         $response->assertDontSee($contact->phone . ' / Female');
-        $response->assertSee('Follower');
+        $response->assertSee('Next Follow Date');
+        $response->assertSee('User');
         $response->assertSee($user->name);
         $response->assertSee('Action');
         $response->assertSee('Add Follow-up');
         $response->assertSee(route('clinicLeadFollowUp', $lead), false);
         $response->assertDontSee('Mark as Booked');
+        $followUp = FollowUp::query()->where('lead_id', $lead->id)->first();
+
+        $this->assertNotNull($followUp);
+        $response->assertSee($followUp->due_at?->timezone('Asia/Karachi')->format('d M Y'));
+        $response->assertSee($followUp->due_at?->timezone('Asia/Karachi')->format('h:i A').' PKT');
     }
 
     public function test_appointments_action_menu_also_shows_mark_as_booked_for_authorized_user(): void

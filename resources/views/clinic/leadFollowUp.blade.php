@@ -35,6 +35,7 @@
         'visit' => 'Visit',
         'negotiation', 'proposal' => 'Negotiation & Proposal',
         'booked', 'confirmed' => 'Booked',
+        'procedure_attempted' => 'Procedure Attempted',
         'not_interested' => 'Not Interested',
         default => ucfirst(str_replace('_', ' ', $currentStage)),
     };
@@ -564,7 +565,7 @@
                                             @enderror
                                         </div>
 
-                                        <div class="followup-lead-field">
+                                        <div class="followup-lead-field" data-followup-edit-open-stage-field>
                                             <label class="followup-lead-field__label">Next Follow-up Date</label>
                                             <input
                                                 type="datetime-local"
@@ -581,11 +582,12 @@
                                             @enderror
                                         </div>
 
-                                        <div class="followup-lead-field followup-lead-field--full">
+                                        <div class="followup-lead-field followup-lead-field--full" data-followup-edit-open-stage-field>
                                             <label class="followup-lead-field__label">Remarks</label>
                                             <textarea
                                                 name="remarks"
                                                 rows="4"
+                                                data-followup-edit-remarks
                                                 class="form-control followup-lead-field__control followup-lead-field__textarea"
                                                 maxlength="1000"
                                                 placeholder="Write follow-up remarks"
@@ -1034,6 +1036,9 @@
             const editProcedureCheckboxes = Array.from(document.querySelectorAll('[data-edit-procedure-checkbox]'));
             const editProcedureOtherWrap = document.querySelector('[data-edit-procedure-other-wrap]');
             let activeLeadModal = null;
+            const stageKeepsFollowUpDetails = function (stageValue) {
+                return !['procedure_attempted', 'not_interested'].includes(stageValue);
+            };
 
             const closeAllDropdowns = function (except = null) {
                 actionDropdowns.forEach((dropdown) => {
@@ -1149,15 +1154,25 @@
 
                 const stageSelectInput = modal.querySelector('[data-followup-edit-stage]');
                 const dueAtInput = modal.querySelector('[data-followup-edit-due]');
+                const remarksTextarea = modal.querySelector('[data-followup-edit-remarks]');
+                const openFieldWraps = Array.from(modal.querySelectorAll('[data-followup-edit-open-stage-field]'));
 
                 if (!stageSelectInput || !dueAtInput) {
                     return;
                 }
 
-                const isClosedStage = ['booked', 'not_interested'].includes(stageSelectInput.value);
+                const shouldShowFollowUpDetails = stageKeepsFollowUpDetails(stageSelectInput.value);
 
-                dueAtInput.required = !isClosedStage;
-                dueAtInput.disabled = isClosedStage;
+                openFieldWraps.forEach((fieldWrap) => {
+                    fieldWrap.classList.toggle('hidden', !shouldShowFollowUpDetails);
+                });
+
+                dueAtInput.required = shouldShowFollowUpDetails;
+                dueAtInput.disabled = !shouldShowFollowUpDetails;
+
+                if (remarksTextarea) {
+                    remarksTextarea.disabled = !shouldShowFollowUpDetails;
+                }
             };
 
             editLeadTriggers.forEach((trigger) => {
@@ -1345,20 +1360,20 @@
                     return;
                 }
 
-                const isClosedStage = ['booked', 'not_interested'].includes(stageSelect.value);
+                const shouldShowFollowUpDetails = stageKeepsFollowUpDetails(stageSelect.value);
 
                 openStageFields.forEach((fieldWrap) => {
-                    fieldWrap.classList.toggle('hidden', isClosedStage);
+                    fieldWrap.classList.toggle('hidden', !shouldShowFollowUpDetails);
                 });
 
                 if (nextDueAtInput) {
-                    nextDueAtInput.required = !isClosedStage;
-                    nextDueAtInput.disabled = isClosedStage;
+                    nextDueAtInput.required = shouldShowFollowUpDetails;
+                    nextDueAtInput.disabled = !shouldShowFollowUpDetails;
                 }
 
                 if (remarksInput) {
-                    remarksInput.required = !isClosedStage;
-                    remarksInput.disabled = isClosedStage;
+                    remarksInput.required = shouldShowFollowUpDetails;
+                    remarksInput.disabled = !shouldShowFollowUpDetails;
                 }
             };
 

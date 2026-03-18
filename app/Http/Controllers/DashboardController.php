@@ -54,6 +54,7 @@ class DashboardController extends Controller
             ['label' => 'Contacted', 'stages' => ['contacted', 'visit'], 'dot_class' => 'bg-success-600'],
             ['label' => 'Proposal', 'stages' => ['negotiation', 'proposal'], 'dot_class' => 'bg-purple-600'],
             ['label' => 'Booked', 'stages' => ['booked', 'confirmed'], 'dot_class' => 'bg-pink-600'],
+            ['label' => 'Procedure Attempted', 'stages' => ['procedure_attempted'], 'dot_class' => 'bg-info-600'],
             ['label' => 'Not Interested', 'stages' => ['not_interested'], 'dot_class' => 'bg-info-600'],
         ];
 
@@ -71,6 +72,7 @@ class DashboardController extends Controller
             ['key' => 'whatsapp', 'label' => 'WhatsApp', 'icon' => 'ic:baseline-whatsapp', 'icon_class' => 'text-success-500 dark:text-success-500', 'bar_class' => 'bg-success-500'],
             ['key' => 'instagram', 'label' => 'Instagram', 'icon' => 'ri:instagram-fill', 'icon_class' => 'text-purple-600 dark:text-purple-500', 'bar_class' => 'bg-purple-600'],
             ['key' => 'facebook', 'label' => 'Facebook', 'icon' => 'ri:facebook-fill', 'icon_class' => 'text-blue-600 dark:text-blue-500', 'bar_class' => 'bg-blue-600'],
+            ['key' => 'meta', 'label' => 'Lead From Meta', 'icon' => 'simple-icons:meta', 'icon_class' => 'text-sky-600 dark:text-sky-500', 'bar_class' => 'bg-sky-600'],
             ['key' => 'tiktok', 'label' => 'TikTok', 'icon' => 'simple-icons:tiktok', 'icon_class' => 'text-neutral-900 dark:text-neutral-200', 'bar_class' => 'bg-neutral-900'],
             ['key' => 'google_business', 'label' => 'Google Business', 'icon' => 'ri:google-fill', 'icon_class' => 'text-warning-600 dark:text-warning-500', 'bar_class' => 'bg-warning-600'],
             ['key' => 'manual', 'label' => 'Walk In Lead', 'icon' => 'mdi:walk', 'icon_class' => 'text-info-600 dark:text-info-500', 'bar_class' => 'bg-info-600'],
@@ -283,6 +285,7 @@ class DashboardController extends Controller
     {
         return match ($source) {
             'google_business' => 'Google Business',
+            'meta' => 'Lead From Meta',
             'manual' => 'Walk In Lead',
             default => ucfirst(str_replace('_', ' ', $source !== '' ? $source : 'unknown')),
         };
@@ -295,6 +298,7 @@ class DashboardController extends Controller
             'contacted', 'visit' => 'Contacted',
             'negotiation', 'proposal' => 'Proposal',
             'booked', 'confirmed' => 'Booked',
+            'procedure_attempted' => 'Procedure Attempted',
             'not_interested' => 'Not Interested',
             default => ucfirst(str_replace('_', ' ', $stage !== '' ? $stage : 'new')),
         };
@@ -307,6 +311,7 @@ class DashboardController extends Controller
             'contacted', 'visit' => 'bg-warning-100 dark:bg-warning-600/25 text-warning-600 dark:text-warning-400',
             'negotiation', 'proposal' => 'bg-purple-100 dark:bg-purple-600/25 text-purple-600 dark:text-purple-400',
             'booked', 'confirmed' => 'bg-success-100 dark:bg-success-600/25 text-success-600 dark:text-success-400',
+            'procedure_attempted' => 'bg-info-100 dark:bg-info-600/25 text-info-600 dark:text-info-400',
             'not_interested' => 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200',
             default => 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200',
         };

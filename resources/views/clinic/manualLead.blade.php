@@ -12,7 +12,7 @@
 
     $hasOtherSelected = in_array('other', $selectedProcedures, true);
 
-    $sourceOrder = ['manual', 'whatsapp', 'facebook', 'google_business', 'instagram', 'tiktok'];
+    $sourceOrder = ['manual', 'whatsapp', 'facebook', 'meta', 'google_business', 'instagram', 'tiktok'];
     $orderedSources = collect($sourceOrder)
         ->filter(static fn (string $key): bool => isset($sources[$key]))
         ->mapWithKeys(static fn (string $key): array => [$key => $sources[$key]])

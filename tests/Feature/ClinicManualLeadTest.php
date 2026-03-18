@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Contact;
+use App\Models\FollowUp;
 use App\Models\Lead;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,6 +33,8 @@ class ClinicManualLeadTest extends TestCase
         $response->assertSeeInOrder(['value="female"', 'checked', 'Female'], false);
         $response->assertSee('Female', false);
         $response->assertSee('Male', false);
+        $response->assertSee('value="meta"', false);
+        $response->assertSee('Lead From Meta');
         $response->assertSee('btn-cancel', false);
     }
 
@@ -53,7 +56,7 @@ class ClinicManualLeadTest extends TestCase
                 'gender' => 'female',
                 'phone' => '+923001234567',
                 'email' => 'ayesha@example.com',
-                'source_platform' => 'manual',
+                'source_platform' => 'meta',
                 'stage' => 'new',
                 'remarks' => 'Interested in laser hair removal.',
                 'follow_up_due_at' => $expectedFollowUpDueAt,
@@ -68,6 +71,7 @@ class ClinicManualLeadTest extends TestCase
             'gender' => 'female',
             'phone' => '+923001234567',
             'email' => 'ayesha@example.com',
+            'default_source' => 'meta',
         ]);
 
         $contact = Contact::query()
@@ -77,7 +81,7 @@ class ClinicManualLeadTest extends TestCase
         $this->assertNotNull($contact);
         $this->assertDatabaseHas('leads', [
             'contact_id' => $contact?->id,
-            'source_platform' => 'manual',
+            'source_platform' => 'meta',
             'stage' => 'new',
             'status' => 'open',
             'assigned_to_user_id' => $user->id,
@@ -169,15 +173,32 @@ class ClinicManualLeadTest extends TestCase
             ],
         ]);
 
+        $nextFollowUpAt = now('Asia/Karachi')->addDay()->setTime(15, 30)->utc();
+
+        FollowUp::query()->create([
+            'lead_id' => $lead->id,
+            'contact_id' => $contact->id,
+            'trigger_type' => 'manual_follow_up_update',
+            'stage_snapshot' => 'new',
+            'status' => 'pending',
+            'due_at' => $nextFollowUpAt,
+            'summary' => 'Call back tomorrow',
+            'assigned_to_user_id' => $user->id,
+            'created_by_user_id' => $user->id,
+        ]);
+
         $response = $this
             ->actingAs($user)
             ->get(route('clinicLeads'));
 
         $response->assertOk();
         $response->assertSeeInOrder(['Phone No', 'Source', 'Created At'], false);
+        $response->assertSee('Next Follow Date');
         $response->assertSee('+923001234567');
         $response->assertDontSee('+923001234567 / Female');
         $response->assertSee('Walk In Lead');
         $response->assertSee($lead->fresh()?->created_at?->timezone('Asia/Karachi')->format('d M Y h:i A').' PKT');
+        $response->assertSee($nextFollowUpAt->timezone('Asia/Karachi')->format('d M Y'));
+        $response->assertSee($nextFollowUpAt->timezone('Asia/Karachi')->format('h:i A').' PKT');
     }
 }

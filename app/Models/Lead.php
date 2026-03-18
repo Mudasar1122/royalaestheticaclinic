@@ -68,7 +68,7 @@ class Lead extends Model
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->isAdmin()) {
+        if ($user->leadVisibilityScope() === 'all') {
             return $query;
         }
 
@@ -77,7 +77,14 @@ class Lead extends Model
 
     public function isVisibleTo(?User $user): bool
     {
-        return $user !== null
-            && ($user->isAdmin() || (int) $this->assigned_to_user_id === (int) $user->id);
+        if ($user === null) {
+            return false;
+        }
+
+        if ($user->leadVisibilityScope() === 'all') {
+            return true;
+        }
+
+        return (int) $this->assigned_to_user_id === (int) $user->id;
     }
 }

@@ -100,7 +100,7 @@
                     <div>
                         <h6 class="mb-1 font-bold text-lg">Lead Pipeline</h6>
                         <span class="text-sm font-medium text-secondary-light whitespace-nowrap block overflow-x-auto">
-                            New -> Contacted -> Proposal -> Booked
+                            New -> Contacted -> Proposal -> Booked -> Procedure Attempted
                         </span>
                     </div>
 

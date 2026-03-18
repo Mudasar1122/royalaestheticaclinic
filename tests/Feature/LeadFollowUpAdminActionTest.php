@@ -40,6 +40,7 @@ class LeadFollowUpAdminActionTest extends TestCase
         $response->assertSee('data-modal-target="editLeadModal-' . $lead->id . '"', false);
         $response->assertSee(route('clinicLeadUpdate', $lead), false);
         $response->assertSee('Created Date');
+        $response->assertSee('Procedure Attempted');
         $response->assertSee('Edit Follow-up');
         $response->assertSee(route('clinicFollowUpUpdate', $followUp), false);
         $response->assertSee('Edit');
@@ -269,6 +270,68 @@ class LeadFollowUpAdminActionTest extends TestCase
         $this->assertSame('Updated remarks', $followUp->summary);
         $this->assertSame('contacted', $lead->stage);
         $this->assertSame('open', $lead->status);
+    }
+
+    public function test_booked_follow_up_from_follow_up_page_creates_pending_scheduled_follow_up(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups', 'mark_booked'],
+            ],
+        ]);
+
+        [$contact, $lead] = $this->createLead($user);
+
+        $existingFollowUp = FollowUp::query()->create([
+            'lead_id' => $lead->id,
+            'contact_id' => $contact->id,
+            'trigger_type' => 'manual_lead_create',
+            'stage_snapshot' => 'new',
+            'status' => 'pending',
+            'due_at' => now()->addDay(),
+            'summary' => 'Initial queue item',
+            'assigned_to_user_id' => $user->id,
+            'created_by_user_id' => $user->id,
+        ]);
+
+        $nextFollowUpDueAt = now('Asia/Karachi')->addDays(3)->setTime(15, 45);
+
+        $response = $this
+            ->actingAs($user)
+            ->post(route('clinicLeadFollowUpStore', $lead), [
+                'follow_up_method' => 'call',
+                'stage' => 'booked',
+                'next_follow_up_due_at' => $nextFollowUpDueAt->format('Y-m-d H:i:s'),
+                'remarks' => 'Booked and needs a reminder before visit.',
+            ]);
+
+        $response->assertRedirect(route('clinicLeadFollowUp', $lead));
+        $response->assertSessionHas('status', 'Follow-up added.');
+
+        $existingFollowUp->refresh();
+        $lead->refresh();
+
+        $this->assertSame('completed', $existingFollowUp->status);
+        $this->assertSame('booked', $existingFollowUp->stage_snapshot);
+
+        $newFollowUp = FollowUp::query()
+            ->where('lead_id', $lead->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($newFollowUp);
+        $this->assertSame('call', $newFollowUp->trigger_type);
+        $this->assertSame('booked', $newFollowUp->stage_snapshot);
+        $this->assertSame('pending', $newFollowUp->status);
+        $this->assertSame('Booked and needs a reminder before visit.', $newFollowUp->summary);
+        $this->assertSame(
+            $nextFollowUpDueAt->format('Y-m-d H:i'),
+            $newFollowUp->due_at?->timezone('Asia/Karachi')->format('Y-m-d H:i')
+        );
+        $this->assertSame('booked', $lead->stage);
+        $this->assertSame('closed', $lead->status);
     }
 
     public function test_non_admin_cannot_update_follow_up_from_follow_up_page(): void
