@@ -66,13 +66,15 @@ class FollowUp extends Model
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->isAdmin()) {
-            return $query;
-        }
-
         return $query->whereHas(
             'lead',
-            fn (Builder $leadQuery): Builder => $leadQuery->visibleTo($user)
+            function (Builder $leadQuery) use ($user): Builder {
+                $leadQuery->whereNull($leadQuery->getModel()->qualifyColumn('deleted_at'));
+
+                return $user->isAdmin()
+                    ? $leadQuery
+                    : $leadQuery->visibleTo($user);
+            }
         );
     }
 }

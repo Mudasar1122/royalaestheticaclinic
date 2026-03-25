@@ -7,6 +7,7 @@ use App\Models\FollowUp;
 use App\Models\Lead;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class ClinicAppointmentsActionTest extends TestCase
@@ -94,10 +95,71 @@ class ClinicAppointmentsActionTest extends TestCase
         $response->assertDontSee($otherContact->phone);
     }
 
+    public function test_appointment_counts_exclude_deleted_leads_for_admin(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 3, 25, 9, 0, 0, 'Asia/Karachi')->utc());
+
+        try {
+            $admin = User::factory()->create([
+                'role' => 'admin',
+            ]);
+
+            [$todayContact] = $this->createLeadWithPendingFollowUp(
+                $admin,
+                '+923001110101',
+                now('Asia/Karachi')->startOfDay()->addHours(12)->utc()
+            );
+            [$deletedTodayContact, $deletedTodayLead] = $this->createLeadWithPendingFollowUp(
+                $admin,
+                '+923001110102',
+                now('Asia/Karachi')->startOfDay()->addHours(14)->utc()
+            );
+            [$pendingContact] = $this->createLeadWithPendingFollowUp(
+                $admin,
+                '+923001110103',
+                now('Asia/Karachi')->subDay()->setTime(18, 0)->utc()
+            );
+            [$deletedPendingContact, $deletedPendingLead] = $this->createLeadWithPendingFollowUp(
+                $admin,
+                '+923001110104',
+                now('Asia/Karachi')->subDay()->setTime(16, 0)->utc()
+            );
+
+            $deletedTodayLead->delete();
+            $deletedPendingLead->delete();
+
+            $todayResponse = $this
+                ->actingAs($admin)
+                ->get(route('clinicAppointments', ['tab' => 'today']));
+
+            $todayResponse->assertOk();
+            $todayResponse->assertViewHas('todayCount', 1);
+            $todayResponse->assertViewHas('pendingCount', 1);
+            $todayResponse->assertSee($todayContact->phone);
+            $todayResponse->assertDontSee($deletedTodayContact->phone);
+
+            $pendingResponse = $this
+                ->actingAs($admin)
+                ->get(route('clinicAppointments', ['tab' => 'pending']));
+
+            $pendingResponse->assertOk();
+            $pendingResponse->assertViewHas('todayCount', 1);
+            $pendingResponse->assertViewHas('pendingCount', 1);
+            $pendingResponse->assertSee($pendingContact->phone);
+            $pendingResponse->assertDontSee($deletedPendingContact->phone);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /**
      * @return array{0: Contact, 1: Lead}
      */
-    private function createLeadWithPendingFollowUp(User $user, string $phone = '+923001234567'): array
+    private function createLeadWithPendingFollowUp(
+        User $user,
+        string $phone = '+923001234567',
+        $dueAt = null
+    ): array
     {
         $contact = Contact::query()->create([
             'full_name' => 'Ayesha Khan',
@@ -126,7 +188,7 @@ class ClinicAppointmentsActionTest extends TestCase
             'trigger_type' => 'manual_lead_create',
             'stage_snapshot' => 'new',
             'status' => 'pending',
-            'due_at' => now('Asia/Karachi')->startOfDay()->addHours(12)->utc(),
+            'due_at' => $dueAt ?? now('Asia/Karachi')->startOfDay()->addHours(12)->utc(),
             'summary' => 'Queue item',
             'assigned_to_user_id' => $user->id,
             'created_by_user_id' => $user->id,
