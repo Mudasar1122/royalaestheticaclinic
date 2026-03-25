@@ -72,7 +72,7 @@ class DashboardController extends Controller
             ['key' => 'whatsapp', 'label' => 'WhatsApp', 'icon' => 'ic:baseline-whatsapp', 'icon_class' => 'text-success-500 dark:text-success-500', 'bar_class' => 'bg-success-500'],
             ['key' => 'instagram', 'label' => 'Instagram', 'icon' => 'ri:instagram-fill', 'icon_class' => 'text-purple-600 dark:text-purple-500', 'bar_class' => 'bg-purple-600'],
             ['key' => 'facebook', 'label' => 'Facebook', 'icon' => 'ri:facebook-fill', 'icon_class' => 'text-blue-600 dark:text-blue-500', 'bar_class' => 'bg-blue-600'],
-            ['key' => 'meta', 'label' => 'Lead From Meta', 'icon' => 'simple-icons:meta', 'icon_class' => 'text-sky-600 dark:text-sky-500', 'bar_class' => 'bg-sky-600'],
+            ['key' => 'meta', 'label' => 'Lead Form', 'icon' => 'simple-icons:meta', 'icon_class' => 'text-sky-600 dark:text-sky-500', 'bar_class' => 'bg-sky-600'],
             ['key' => 'tiktok', 'label' => 'TikTok', 'icon' => 'simple-icons:tiktok', 'icon_class' => 'text-neutral-900 dark:text-neutral-200', 'bar_class' => 'bg-neutral-900'],
             ['key' => 'google_business', 'label' => 'Google Business', 'icon' => 'ri:google-fill', 'icon_class' => 'text-warning-600 dark:text-warning-500', 'bar_class' => 'bg-warning-600'],
             ['key' => 'manual', 'label' => 'Walk In Lead', 'icon' => 'mdi:walk', 'icon_class' => 'text-info-600 dark:text-info-500', 'bar_class' => 'bg-info-600'],
@@ -285,7 +285,7 @@ class DashboardController extends Controller
     {
         return match ($source) {
             'google_business' => 'Google Business',
-            'meta' => 'Lead From Meta',
+            'meta' => 'Lead Form',
             'manual' => 'Walk In Lead',
             default => ucfirst(str_replace('_', ' ', $source !== '' ? $source : 'unknown')),
         };

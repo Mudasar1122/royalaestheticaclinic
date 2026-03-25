@@ -83,7 +83,7 @@
                                         </td>
                                         <td>{{ match ((string) $lead->source_platform) {
                                             'manual' => 'Walk In Lead',
-                                            'meta' => 'Lead From Meta',
+                                            'meta' => 'Lead Form',
                                             default => ucfirst(str_replace('_', ' ', (string) $lead->source_platform)),
                                         } }}</td>
                                         <td>

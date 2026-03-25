@@ -52,9 +52,13 @@
                     $crmNotifications = isset($crmNotifications) ? collect($crmNotifications) : collect();
                     $crmNotificationCount = $crmNotificationCount ?? $crmNotifications->count();
                     $crmHighlightedNotificationCount = $crmHighlightedNotificationCount ?? 0;
+                    $crmNotificationCurrentPage = $crmNotificationCurrentPage ?? ($crmNotifications->isNotEmpty() ? 1 : 0);
+                    $crmNotificationPerPage = $crmNotificationPerPage ?? 4;
+                    $crmNotificationHasMore = $crmNotificationHasMore ?? false;
                 @endphp
                 <button
                     data-dropdown-toggle="dropdownNotification"
+                    data-notification-trigger
                     class="relative w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded-full flex justify-center items-center"
                     type="button"
                 >
@@ -65,36 +69,44 @@
                         </span>
                     @endif
                 </button>
-                <div id="dropdownNotification" class="z-10 hidden bg-white dark:bg-neutral-700 rounded-2xl overflow-hidden shadow-lg max-w-[394px] w-full">
+                <div
+                    id="dropdownNotification"
+                    data-notification-dropdown
+                    data-feed-url="{{ route('notificationFeed') }}"
+                    data-current-page="{{ $crmNotificationCurrentPage }}"
+                    data-per-page="{{ $crmNotificationPerPage }}"
+                    data-has-more="{{ $crmNotificationHasMore ? '1' : '0' }}"
+                    data-total-count="{{ $crmNotificationCount }}"
+                    class="z-10 hidden bg-white dark:bg-neutral-700 rounded-2xl overflow-hidden shadow-lg max-w-[394px] w-full"
+                    style="width: min(394px, calc(100vw - 24px));"
+                >
                     <div class="py-3 px-4 rounded-lg bg-primary-50 dark:bg-primary-600/25 m-4 flex items-center justify-between gap-2">
                         <h6 class="text-lg text-neutral-900 font-semibold mb-0">Notification</h6>
                         <span class="w-10 h-10 bg-white dark:bg-neutral-600 {{ $crmHighlightedNotificationCount > 0 ? 'text-danger-600' : 'text-primary-600 dark:text-white' }} font-bold flex justify-center items-center rounded-full">
                             {{ $crmNotificationCount }}
                         </span>
                     </div>
-                    <div class="scroll-sm !border-t-0">
-                        <div class="max-h-[400px] overflow-y-auto">
-                            @forelse ($crmNotifications as $notification)
-                                <div class="flex px-4 py-3 {{ !empty($notification['is_highlighted']) ? 'bg-danger-50 dark:bg-danger-600/10 border-l-4 border-danger-500' : '' }} justify-between gap-2">
-                                    <a href="{{ $notification['url'] ?? route('notification') }}" class="flex items-center gap-3 min-w-0 flex-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg px-2 py-1">
-                                        <div class="flex-shrink-0 relative w-11 h-11 {{ !empty($notification['is_highlighted']) ? 'bg-danger-100 dark:bg-danger-600/25 text-danger-600' : 'bg-success-200 dark:bg-success-600/25 text-success-600' }} flex justify-center items-center rounded-full">
-                                            <iconify-icon icon="{{ !empty($notification['is_highlighted']) ? 'heroicons:exclamation-triangle' : 'heroicons:chat-bubble-left-right' }}" class="text-xl"></iconify-icon>
-                                        </div>
-                                        <div class="min-w-0">
-                                            <h6 class="text-sm fw-semibold mb-1 line-clamp-1">{{ $notification['title'] ?? 'Notification' }}</h6>
-                                            <p class="mb-0 text-sm line-clamp-2">{{ $notification['description'] ?? '' }}</p>
-                                            <p class="mb-0 text-xs text-secondary-light line-clamp-1">{{ $notification['from'] ?? '' }}</p>
-                                        </div>
-                                    </a>
-                                    <div class="shrink-0 text-end flex flex-col items-end gap-2">
-                                        <span class="text-xs text-neutral-500">{{ ($notification['received_at'] ?? null)?->diffForHumans() }}</span>
-                                    </div>
-                                </div>
-                            @empty
-                                <div class="px-4 py-8 text-center text-sm text-secondary-light">
-                                    No CRM notifications yet.
-                                </div>
-                            @endforelse
+                    <div class="!border-t-0">
+                        <div
+                            class="max-h-[400px] overflow-y-auto scroll-sm pe-2"
+                            data-notification-scroll-container
+                            style="max-height: min(50vh, 400px);"
+                        >
+                            <div data-notification-list>
+                                @include('components.notifications.dropdown-items', ['notifications' => $crmNotifications])
+                            </div>
+
+                            <div data-notification-empty-state class="px-4 py-8 text-center text-sm text-secondary-light {{ $crmNotifications->isNotEmpty() ? 'hidden' : '' }}">
+                                No CRM notifications yet.
+                            </div>
+
+                            <div data-notification-loader class="hidden px-4 py-3 text-center text-xs text-secondary-light">
+                                Loading more lead notifications...
+                            </div>
+
+                            <div data-notification-end-state data-default-text="All notifications loaded." class="px-4 py-3 text-center text-xs text-secondary-light {{ $crmNotifications->isNotEmpty() && !$crmNotificationHasMore ? '' : 'hidden' }}">
+                                All notifications loaded.
+                            </div>
                         </div>
 
                         <div class="text-center py-3 px-4">
@@ -172,3 +184,138 @@
         </div>
     </div>
 </div>
+
+@once
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var dropdown = document.querySelector('[data-notification-dropdown]');
+            var trigger = document.querySelector('[data-notification-trigger]');
+
+            if (!dropdown || !trigger) {
+                return;
+            }
+
+            var scrollContainer = dropdown.querySelector('[data-notification-scroll-container]');
+            var list = dropdown.querySelector('[data-notification-list]');
+            var emptyState = dropdown.querySelector('[data-notification-empty-state]');
+            var loader = dropdown.querySelector('[data-notification-loader]');
+            var endState = dropdown.querySelector('[data-notification-end-state]');
+
+            if (!scrollContainer || !list || !emptyState || !loader || !endState) {
+                return;
+            }
+
+            var endpoint = dropdown.dataset.feedUrl;
+            var currentPage = parseInt(dropdown.dataset.currentPage || '0', 10);
+            var perPage = parseInt(dropdown.dataset.perPage || '4', 10);
+            var hasMore = dropdown.dataset.hasMore === '1';
+            var isLoading = false;
+            var loadFailed = false;
+
+            function updateStates() {
+                var hasItems = list.children.length > 0;
+                var defaultEndText = endState.dataset.defaultText || 'All notifications loaded.';
+
+                dropdown.dataset.currentPage = String(currentPage);
+                dropdown.dataset.hasMore = hasMore ? '1' : '0';
+
+                emptyState.classList.toggle('hidden', hasItems);
+                loader.classList.toggle('hidden', !isLoading);
+
+                if (loadFailed && hasItems && !isLoading) {
+                    endState.classList.remove('hidden');
+                    endState.textContent = 'Unable to load more notifications.';
+
+                    return;
+                }
+
+                if (isLoading || !hasItems || hasMore) {
+                    endState.classList.add('hidden');
+                    endState.textContent = defaultEndText;
+
+                    return;
+                }
+
+                endState.classList.remove('hidden');
+                endState.textContent = defaultEndText;
+            }
+
+            function isDropdownVisible() {
+                return !dropdown.classList.contains('hidden') && dropdown.offsetParent !== null;
+            }
+
+            function ensureScrollable() {
+                if (!isDropdownVisible() || !hasMore || isLoading) {
+                    return;
+                }
+
+                if (scrollContainer.scrollHeight <= scrollContainer.clientHeight + 12) {
+                    loadMore();
+                }
+            }
+
+            function loadMore() {
+                if (!endpoint || !hasMore || isLoading) {
+                    return;
+                }
+
+                isLoading = true;
+                updateStates();
+
+                var nextPage = currentPage + 1;
+                var requestUrl = new URL(endpoint, window.location.origin);
+                requestUrl.searchParams.set('page', String(nextPage));
+                requestUrl.searchParams.set('per_page', String(perPage));
+
+                fetch(requestUrl.toString(), {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Failed to load notifications.');
+                        }
+
+                        return response.json();
+                    })
+                    .then(function (payload) {
+                        loadFailed = false;
+
+                        if (payload.html) {
+                            list.insertAdjacentHTML('beforeend', payload.html);
+                        }
+
+                        currentPage = Number.isInteger(payload.current_page) ? payload.current_page : nextPage;
+                        hasMore = Boolean(payload.has_more);
+                    })
+                    .catch(function () {
+                        loadFailed = true;
+                        hasMore = false;
+                    })
+                    .finally(function () {
+                        isLoading = false;
+                        updateStates();
+                        ensureScrollable();
+                    });
+            }
+
+            scrollContainer.addEventListener('scroll', function () {
+                if (scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight > 48) {
+                    return;
+                }
+
+                loadMore();
+            }, { passive: true });
+
+            trigger.addEventListener('click', function () {
+                window.setTimeout(function () {
+                    ensureScrollable();
+                }, 180);
+            });
+
+            updateStates();
+        });
+    </script>
+@endonce

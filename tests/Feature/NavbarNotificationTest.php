@@ -217,6 +217,65 @@ class NavbarNotificationTest extends TestCase
         $response->assertDontSee('Private follow-up');
     }
 
+    public function test_navbar_dropdown_initially_renders_four_notifications_and_keeps_total_count(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups'],
+            ],
+        ]);
+
+        foreach (range(1, 6) as $index) {
+            $this->createFollowUpNotificationLead($user, 'Notification Lead '.$index, $index);
+        }
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboardIndex'));
+
+        $response->assertOk();
+        $response->assertSee('data-total-count="6"', false);
+        $response->assertSee('data-has-more="1"', false);
+        $this->assertSame(4, substr_count($response->getContent(), 'data-navbar-notification-item'));
+    }
+
+    public function test_navbar_notification_feed_returns_next_page_of_notifications(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups'],
+            ],
+        ]);
+
+        foreach (range(1, 6) as $index) {
+            $this->createFollowUpNotificationLead($user, 'Paged Notification Lead '.$index, $index);
+        }
+
+        $response = $this
+            ->actingAs($user)
+            ->getJson(route('notificationFeed', [
+                'page' => 2,
+                'per_page' => 4,
+            ]));
+
+        $response->assertOk();
+        $response->assertJson([
+            'current_page' => 2,
+            'per_page' => 4,
+            'has_more' => false,
+            'next_page' => null,
+            'total_count' => 6,
+            'highlighted_count' => 6,
+        ]);
+        $response->assertSee('Paged Notification Lead 2');
+        $response->assertSee('Paged Notification Lead 1');
+        $response->assertDontSee('Paged Notification Lead 5');
+    }
+
     public function test_admin_sees_notifications_for_all_leads(): void
     {
         $admin = User::factory()->create([
@@ -264,5 +323,42 @@ class NavbarNotificationTest extends TestCase
         $response->assertOk();
         $response->assertSee(route('clinicLeadFollowUp', $lead), false);
         $response->assertSee('Admin can see this');
+    }
+
+    private function createFollowUpNotificationLead(User $user, string $fullName, int $dueInHours): Lead
+    {
+        $phone = '+92300'.str_pad((string) $dueInHours, 7, '0', STR_PAD_LEFT);
+        $contact = Contact::query()->create([
+            'full_name' => $fullName,
+            'gender' => 'female',
+            'phone' => $phone,
+            'normalized_phone' => $phone,
+            'default_source' => 'manual',
+        ]);
+
+        $lead = Lead::query()->create([
+            'contact_id' => $contact->id,
+            'source_platform' => 'manual',
+            'status' => 'open',
+            'stage' => 'new',
+            'assigned_to_user_id' => $user->id,
+            'last_activity_at' => now(),
+            'meta' => [
+                'origin' => 'manual_form',
+            ],
+        ]);
+
+        FollowUp::query()->create([
+            'lead_id' => $lead->id,
+            'contact_id' => $contact->id,
+            'trigger_type' => 'manual_lead_create',
+            'stage_snapshot' => 'new',
+            'status' => 'pending',
+            'due_at' => now()->addHours($dueInHours),
+            'summary' => 'Notification follow-up for '.$fullName,
+            'assigned_to_user_id' => $user->id,
+        ]);
+
+        return $lead;
     }
 }

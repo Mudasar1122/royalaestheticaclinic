@@ -149,6 +149,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/currencies', 'currencies')->name('currencies');
         Route::get('/language', 'language')->name('language');
         Route::get('/notification', 'notification')->name('notification');
+        Route::get('/notification-feed', 'notificationFeed')->name('notificationFeed');
         Route::get('/notification-alert', 'notificationAlert')->name('notificationAlert');
         Route::get('/payment-gateway', 'paymentGateway')->name('paymentGateway');
         Route::get('/theme', 'theme')->name('theme');

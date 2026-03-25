@@ -1224,7 +1224,7 @@ class ClinicController extends Controller
             'whatsapp' => 'WhatsApp',
             'tiktok' => 'TikTok',
             'google_business' => 'Google Business',
-            'meta' => 'Lead From Meta',
+            'meta' => 'Lead Form',
             'manual' => 'Walk In Lead',
         ];
     }

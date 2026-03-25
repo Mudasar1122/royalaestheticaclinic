@@ -34,7 +34,7 @@ class ClinicManualLeadTest extends TestCase
         $response->assertSee('Female', false);
         $response->assertSee('Male', false);
         $response->assertSee('value="meta"', false);
-        $response->assertSee('Lead From Meta');
+        $response->assertSee('Lead Form');
         $response->assertSee('btn-cancel', false);
     }
 
