@@ -43,9 +43,16 @@
 @endphp
 
 @section('content')
-    @if ($errors->has('whatsapp'))
+    @php
+        $leadPageError = $errors->first('whatsapp')
+            ?: $errors->first('export')
+            ?: $errors->first('date_from')
+            ?: $errors->first('date_to');
+    @endphp
+
+    @if ($leadPageError !== '')
         <div class="alert alert-danger px-4 py-3 rounded-lg mb-4">
-            {{ $errors->first('whatsapp') }}
+            {{ $leadPageError }}
         </div>
     @endif
 
@@ -58,6 +65,8 @@
                         'search' => $filters['search'] !== '' ? $filters['search'] : null,
                         'source' => $filters['source'] !== '' ? $filters['source'] : null,
                         'status' => $filters['status'] !== '' ? $filters['status'] : null,
+                        'date_from' => $filters['date_from'] !== '' ? $filters['date_from'] : null,
+                        'date_to' => $filters['date_to'] !== '' ? $filters['date_to'] : null,
                     ],
                     static fn ($value) => $value !== null && $value !== ''
                 );
@@ -84,7 +93,9 @@
                 <input type="hidden" name="tab" value="{{ $activeTab }}">
 
                 <div class="lead-filter-form__field lead-filter-form__search">
+                    <label class="lead-filter-form__label" for="lead-search">Search</label>
                     <input
+                        id="lead-search"
                         type="text"
                         name="search"
                         value="{{ $filters['search'] }}"
@@ -94,7 +105,8 @@
                 </div>
 
                 <div class="lead-filter-form__field lead-filter-form__source">
-                    <select name="source" class="form-select rounded-lg">
+                    <label class="lead-filter-form__label" for="lead-source">Source</label>
+                    <select id="lead-source" name="source" class="form-select rounded-lg">
                         <option value="">All Sources</option>
                         @foreach ($sources as $sourceKey => $sourceLabel)
                             <option value="{{ $sourceKey }}" @selected($filters['source'] === $sourceKey)>{{ $sourceLabel }}</option>
@@ -103,16 +115,72 @@
                 </div>
 
                 <div class="lead-filter-form__field lead-filter-form__status">
-                    <select name="status" class="form-select rounded-lg">
+                    <label class="lead-filter-form__label" for="lead-status">Status</label>
+                    <select id="lead-status" name="status" class="form-select rounded-lg">
                         <option value="">All Status</option>
                         <option value="open" @selected($filters['status'] === 'open')>Open</option>
                         <option value="closed" @selected($filters['status'] === 'closed')>Closed</option>
                     </select>
                 </div>
 
+                <div class="lead-filter-form__field lead-filter-form__date">
+                    <label class="lead-filter-form__label" for="lead-date-from">Created From</label>
+                    <input
+                        id="lead-date-from"
+                        type="date"
+                        name="date_from"
+                        value="{{ $filters['date_from'] }}"
+                        class="form-control rounded-lg"
+                    >
+                </div>
+
+                <div class="lead-filter-form__field lead-filter-form__date">
+                    <label class="lead-filter-form__label" for="lead-date-to">Created To</label>
+                    <input
+                        id="lead-date-to"
+                        type="date"
+                        name="date_to"
+                        value="{{ $filters['date_to'] }}"
+                        class="form-control rounded-lg"
+                    >
+                </div>
+
                 <div class="lead-filter-form__actions">
                     <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg text-sm">Apply Filter</button>
                     <a href="{{ route('clinicLeads', ['tab' => $activeTab]) }}" class="btn btn-outline-primary-600 px-4 py-2 rounded-lg text-sm">Reset</a>
+                </div>
+            </form>
+
+            <form method="POST" action="{{ route('clinicLeadExport') }}" class="lead-export-form" id="lead-export-form">
+                @csrf
+                <input type="hidden" name="tab" value="{{ $activeTab }}">
+                <input type="hidden" name="search" value="{{ $filters['search'] }}">
+                <input type="hidden" name="source" value="{{ $filters['source'] }}">
+                <input type="hidden" name="status" value="{{ $filters['status'] }}">
+                <input type="hidden" name="date_from" value="{{ $filters['date_from'] }}">
+                <input type="hidden" name="date_to" value="{{ $filters['date_to'] }}">
+                <input type="hidden" name="lead_ids" value="" id="lead-export-ids">
+                <input type="hidden" name="scope" value="all" id="lead-export-scope">
+                <input type="hidden" name="format" value="excel" id="lead-export-format">
+
+                <div class="lead-export-form__meta">
+                    <span class="lead-export-form__selected"><span id="lead-selected-count">0</span> lead(s) selected</span>
+                    <span class="lead-export-form__note">All export buttons use the active tab and current filters.</span>
+                </div>
+
+                <div class="lead-export-form__actions">
+                    <button type="button" class="btn btn-outline-primary-600 px-4 py-2 rounded-lg text-sm" data-export-trigger data-export-scope="selected" data-export-format="excel" disabled>
+                        Selected Excel
+                    </button>
+                    <button type="button" class="btn btn-outline-primary-600 px-4 py-2 rounded-lg text-sm" data-export-trigger data-export-scope="selected" data-export-format="pdf" disabled>
+                        Selected PDF
+                    </button>
+                    <button type="button" class="btn btn-primary px-4 py-2 rounded-lg text-sm" data-export-trigger data-export-scope="all" data-export-format="excel" @disabled($leads->isEmpty())>
+                        All Excel
+                    </button>
+                    <button type="button" class="btn btn-primary px-4 py-2 rounded-lg text-sm" data-export-trigger data-export-scope="all" data-export-format="pdf" @disabled($leads->isEmpty())>
+                        All PDF
+                    </button>
                 </div>
             </form>
         </div>
@@ -122,13 +190,16 @@
                 <table id="clinic-leads-table" class="table bordered-table mb-0">
                     <thead>
                         <tr>
+                            <th class="lead-select-cell">
+                                <input type="checkbox" class="form-check-input lead-select-all" data-select-all aria-label="Select all visible leads">
+                            </th>
                             <th>Name</th>
                             <th>Phone No</th>
                             <th>Source</th>
-                            <th>Created At</th>
-                            <th>Procedure of Interest</th>
+                            <th>Created</th>
+                            <th>Procedure</th>
                             <th>Stage</th>
-                            <th>Next Follow Date</th>
+                            <th>Next Follow-up</th>
                             <th>User</th>
                             <th class="text-center">Action</th>
                         </tr>
@@ -164,7 +235,16 @@
                                     : null;
                             @endphp
                             <tr>
+                                <td class="lead-select-cell">
+                                    <input
+                                        type="checkbox"
+                                        class="form-check-input lead-select-checkbox"
+                                        data-lead-id="{{ $lead->id }}"
+                                        aria-label="Select {{ $lead->contact?->full_name ?? 'lead' }} for export"
+                                    >
+                                </td>
                                 <td>
+                                    <span class="lead-sort-value">{{ trim((string) ($lead->contact?->full_name ?? 'Unnamed Lead')) }}</span>
                                     @if ($canManageFollowups)
                                         <a href="{{ route('clinicLeadFollowUp', $lead) }}" class="font-medium text-neutral-700 dark:text-neutral-100 hover:text-primary-600">
                                             {{ $lead->contact?->full_name ?? 'Unnamed Lead' }}
@@ -176,6 +256,7 @@
                                 <td>{{ $formatPhoneOnly($lead->contact) }}</td>
                                 <td>{{ $readableSource((string) $lead->source_platform) }}</td>
                                 <td>
+                                    <span class="lead-sort-value">{{ ($lead->created_at?->format('YmdHis') ?? '00000000000000').'-'.str_pad((string) $lead->id, 10, '0', STR_PAD_LEFT) }}</span>
                                     @if ($lead->created_at)
                                         {{ $lead->created_at->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
                                     @else
@@ -199,6 +280,7 @@
                                     </span>
                                 </td>
                                 <td>
+                                    <span class="lead-sort-value">{{ $nextFollowUpAt?->format('YmdHis') ?? '99999999999999' }}</span>
                                     @if ($nextFollowUpAt)
                                         <div class="followup-date-stack">
                                             <span>{{ $nextFollowUpAt->format('d M Y') }}</span>
@@ -259,7 +341,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="text-center py-10 text-secondary-light">No leads found.</td>
+                                <td colspan="10" class="text-center py-10 text-secondary-light">No leads found.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -498,20 +580,82 @@
             border-bottom: 1px solid #e5e7eb;
             padding: 16px;
             background: #fff;
+            display: grid;
+            gap: 14px;
         }
 
         .lead-filter-form {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(170px, 220px) minmax(150px, 180px) auto;
+            grid-template-columns: minmax(240px, 1.45fr) repeat(4, minmax(150px, 1fr));
             gap: 12px;
             align-items: end;
+        }
+
+        .lead-filter-form__field {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .lead-filter-form__label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #475467;
+        }
+
+        .lead-filter-form__search {
+            grid-column: span 1;
         }
 
         .lead-filter-form__actions {
             display: flex;
             align-items: center;
             gap: 8px;
-            white-space: nowrap;
+            grid-column: 1 / -1;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            padding-top: 2px;
+        }
+
+        .lead-filter-form__actions .btn {
+            min-width: 116px;
+        }
+
+        .lead-export-form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            padding-top: 14px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .lead-export-form__meta {
+            display: grid;
+            gap: 4px;
+        }
+
+        .lead-export-form__selected {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .lead-export-form__note {
+            font-size: 0.78rem;
+            color: #667085;
+        }
+
+        .lead-export-form__actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .lead-export-form__actions .btn {
+            min-width: 128px;
         }
 
         .followup-grid-card .datatable-wrapper .datatable-top {
@@ -519,12 +663,19 @@
             border-top: 1px solid #e5e7eb;
             border-bottom: 1px solid #e5e7eb;
             margin-bottom: 0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
         }
 
         .followup-grid-card .datatable-wrapper .datatable-bottom {
             padding: 12px 16px;
             border-top: 1px solid #e5e7eb;
             margin-top: 0;
+        }
+
+        .followup-grid-card .datatable-wrapper .datatable-top .datatable-search {
+            display: none;
         }
 
         .followup-grid-card .datatable-wrapper .datatable-search .datatable-input {
@@ -547,59 +698,96 @@
             table-layout: fixed;
         }
 
-        #clinic-leads-table th,
         #clinic-leads-table td {
             white-space: normal !important;
-            word-break: break-word !important;
+            word-break: normal !important;
+            overflow-wrap: anywhere;
             vertical-align: top;
+        }
+
+        #clinic-leads-table th {
+            white-space: nowrap !important;
+            word-break: normal !important;
+            overflow-wrap: normal;
+            vertical-align: middle;
+            font-size: 0.8rem;
+            letter-spacing: 0.02em;
+        }
+
+        #clinic-leads-table th,
+        #clinic-leads-table td {
+            padding-inline: 12px;
         }
 
         #clinic-leads-table th:nth-child(1),
         #clinic-leads-table td:nth-child(1) {
-            width: 14%;
+            width: 2.5%;
+            min-width: 42px;
+            text-align: center;
         }
 
         #clinic-leads-table th:nth-child(2),
         #clinic-leads-table td:nth-child(2) {
-            width: 12%;
-            white-space: nowrap !important;
+            width: 14%;
         }
 
         #clinic-leads-table th:nth-child(3),
         #clinic-leads-table td:nth-child(3) {
-            width: 10%;
+            width: 12%;
+            white-space: nowrap !important;
         }
 
         #clinic-leads-table th:nth-child(4),
         #clinic-leads-table td:nth-child(4) {
-            width: 12%;
+            width: 10%;
         }
 
         #clinic-leads-table th:nth-child(5),
         #clinic-leads-table td:nth-child(5) {
-            width: 18%;
-            text-align: left;
+            width: 12%;
         }
 
         #clinic-leads-table th:nth-child(6),
         #clinic-leads-table td:nth-child(6) {
-            width: 12%;
+            width: 20%;
+            text-align: left;
         }
 
         #clinic-leads-table th:nth-child(7),
         #clinic-leads-table td:nth-child(7) {
-            width: 10%;
+            width: 9%;
         }
 
         #clinic-leads-table th:nth-child(8),
         #clinic-leads-table td:nth-child(8) {
-            width: 4%;
+            width: 11%;
         }
 
         #clinic-leads-table th:nth-child(9),
         #clinic-leads-table td:nth-child(9) {
             width: 8%;
+        }
+
+        #clinic-leads-table th:nth-child(10),
+        #clinic-leads-table td:nth-child(10) {
+            width: 8%;
             white-space: nowrap !important;
+        }
+
+        .lead-select-cell {
+            text-align: center !important;
+            vertical-align: middle !important;
+        }
+
+        .lead-select-checkbox,
+        .lead-select-all {
+            width: 16px;
+            height: 16px;
+            accent-color: rgb(var(--ra-primary-rgb, 190 133 0));
+        }
+
+        .lead-sort-value {
+            display: none;
         }
 
         .followup-date-stack {
@@ -707,9 +895,31 @@
             color: #101828;
         }
 
+        @media (max-width: 1400px) {
+            .lead-filter-form {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .lead-filter-form__search {
+                grid-column: span 3;
+            }
+        }
+
         @media (max-width: 1200px) {
             .lead-filter-form {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .lead-filter-form__search {
+                grid-column: span 2;
+            }
+
+            .lead-export-form {
+                grid-template-columns: 1fr;
+            }
+
+            .lead-export-form__actions {
+                justify-content: flex-start;
             }
         }
 
@@ -727,6 +937,10 @@
                 grid-template-columns: 1fr;
             }
 
+            .lead-filter-form__search {
+                grid-column: span 1;
+            }
+
             .lead-filter-form__source,
             .lead-filter-form__status {
                 width: 100%;
@@ -734,6 +948,17 @@
 
             .lead-filter-form__actions {
                 flex-wrap: wrap;
+                justify-content: flex-start;
+            }
+
+            .lead-export-form {
+                grid-template-columns: 1fr;
+                align-items: stretch;
+            }
+
+            .lead-export-form__actions {
+                width: 100%;
+                justify-content: flex-start;
             }
 
             .followup-grid-card .table-responsive {
@@ -741,7 +966,7 @@
             }
 
             .followup-grid-card .table {
-                min-width: 980px !important;
+                min-width: 1120px !important;
             }
         }
     </style>
@@ -749,15 +974,65 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const table = document.getElementById('clinic-leads-table');
+            const exportForm = document.getElementById('lead-export-form');
+            const exportIdsInput = document.getElementById('lead-export-ids');
+            const exportScopeInput = document.getElementById('lead-export-scope');
+            const exportFormatInput = document.getElementById('lead-export-format');
+            const selectedCount = document.getElementById('lead-selected-count');
+            const selectedExportButtons = Array.from(document.querySelectorAll('[data-export-trigger][data-export-scope="selected"]'));
+            const selectedLeadIds = new Set();
+
+            const syncLeadSelectionUi = function () {
+                const leadCheckboxes = Array.from(document.querySelectorAll('.lead-select-checkbox'));
+                const allToggle = document.querySelector('[data-select-all]');
+                const normalizedSelectedIds = Array.from(selectedLeadIds)
+                    .filter((value) => value !== '')
+                    .sort((left, right) => Number(left) - Number(right));
+
+                leadCheckboxes.forEach((checkbox) => {
+                    if (!(checkbox instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    const leadId = String(checkbox.dataset.leadId || '');
+                    checkbox.checked = leadId !== '' && selectedLeadIds.has(leadId);
+                });
+
+                if (selectedCount) {
+                    selectedCount.textContent = String(normalizedSelectedIds.length);
+                }
+
+                if (exportIdsInput instanceof HTMLInputElement) {
+                    exportIdsInput.value = normalizedSelectedIds.join(',');
+                }
+
+                selectedExportButtons.forEach((button) => {
+                    if (button instanceof HTMLButtonElement) {
+                        button.disabled = normalizedSelectedIds.length === 0;
+                    }
+                });
+
+                if (allToggle instanceof HTMLInputElement) {
+                    const visibleIds = leadCheckboxes
+                        .map((checkbox) => String(checkbox.getAttribute('data-lead-id') || ''))
+                        .filter((value) => value !== '');
+                    const visibleSelectedCount = visibleIds.filter((leadId) => selectedLeadIds.has(leadId)).length;
+
+                    allToggle.disabled = visibleIds.length === 0;
+                    allToggle.checked = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+                    allToggle.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleIds.length;
+                }
+            };
 
             if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
                 const leadsTable = new simpleDatatables.DataTable('#clinic-leads-table', {
-                    searchable: true,
+                    searchable: false,
                     fixedHeight: false,
                     perPage: 10,
                     perPageSelect: [10, 25, 50, 100],
                     columns: [
-                        { select: [5], sortable: false, searchable: false },
+                        { select: [0, 2, 3, 5, 6, 8, 9], sortable: false, searchable: false },
+                        { select: [1, 4, 7], sortable: true, searchable: false },
                     ],
                     labels: {
                         placeholder: 'Search...',
@@ -770,6 +1045,17 @@
                 if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
                     window.royalUi.enableDatatableAllOption(leadsTable);
                 }
+            }
+
+            if (table) {
+                const tableObserver = new MutationObserver(function () {
+                    syncLeadSelectionUi();
+                });
+
+                tableObserver.observe(table, {
+                    childList: true,
+                    subtree: true,
+                });
             }
 
             const getDropdowns = function () {
@@ -813,6 +1099,23 @@
                 const target = event.target;
 
                 if (!(target instanceof Element)) {
+                    return;
+                }
+
+                const exportButton = target.closest('[data-export-trigger]');
+
+                if (exportButton instanceof HTMLButtonElement) {
+                    event.preventDefault();
+
+                    if (!exportForm || !(exportScopeInput instanceof HTMLInputElement) || !(exportFormatInput instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    exportScopeInput.value = String(exportButton.getAttribute('data-export-scope') || 'all');
+                    exportFormatInput.value = String(exportButton.getAttribute('data-export-format') || 'excel');
+                    syncLeadSelectionUi();
+                    exportForm.submit();
+
                     return;
                 }
 
@@ -861,6 +1164,54 @@
                 }
             });
 
+            document.addEventListener('change', function (event) {
+                const target = event.target;
+
+                if (!(target instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                if (target.matches('.lead-select-checkbox')) {
+                    const leadId = String(target.dataset.leadId || '');
+
+                    if (leadId === '') {
+                        return;
+                    }
+
+                    if (target.checked) {
+                        selectedLeadIds.add(leadId);
+                    } else {
+                        selectedLeadIds.delete(leadId);
+                    }
+
+                    syncLeadSelectionUi();
+
+                    return;
+                }
+
+                if (target.matches('[data-select-all]')) {
+                    document.querySelectorAll('.lead-select-checkbox').forEach((checkbox) => {
+                        if (!(checkbox instanceof HTMLInputElement)) {
+                            return;
+                        }
+
+                        const leadId = String(checkbox.dataset.leadId || '');
+
+                        if (leadId === '') {
+                            return;
+                        }
+
+                        if (target.checked) {
+                            selectedLeadIds.add(leadId);
+                        } else {
+                            selectedLeadIds.delete(leadId);
+                        }
+                    });
+
+                    syncLeadSelectionUi();
+                }
+            });
+
             document.addEventListener('keydown', function (event) {
                 if (event.key === 'Escape') {
                     closeAll();
@@ -874,6 +1225,8 @@
             window.addEventListener('scroll', function () {
                 closeAll();
             }, true);
+
+            syncLeadSelectionUi();
         });
     </script>
 @endsection

@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function (): void {
 
     Route::prefix('clinic')->middleware('module:lead_management')->controller(ClinicController::class)->group(function (): void {
         Route::get('/leads', 'leads')->name('clinicLeads')->middleware('module:lead_management,view_leads');
+        Route::post('/leads/export', 'exportLeads')->name('clinicLeadExport')->middleware('module:lead_management,view_leads');
         Route::get('/deleted-leads', 'deletedLeads')->name('clinicDeletedLeads')->middleware('admin');
         Route::patch('/leads/{lead}/stage', 'updateLeadStage')->name('clinicLeadStageUpdate')->middleware('module:lead_management,edit_lead');
         Route::patch('/leads/{lead}', 'updateLead')->name('clinicLeadUpdate')->middleware('module:lead_management,edit_lead');

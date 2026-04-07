@@ -10,6 +10,7 @@ use App\Models\LeadActivity;
 use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Services\Messaging\TwilioWhatsAppService;
+use App\Support\LeadExportBuilder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -25,70 +26,24 @@ class ClinicController extends Controller
     public function leads(Request $request): View
     {
         $leadTabs = $this->leadTabs();
+        $filters = $this->validatedLeadFilters($request);
         $user = $request->user();
 
-        $validated = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'],
-            'tab' => ['nullable', 'string', 'max:30'],
-            'source' => ['nullable', 'string', 'max:40'],
-            'status' => ['nullable', 'string', 'max:20'],
-        ]);
-
-        $search = trim((string) ($validated['search'] ?? ''));
-        $activeTab = (string) ($validated['tab'] ?? 'all');
-        $sourceFilter = (string) ($validated['source'] ?? '');
-        $statusFilter = (string) ($validated['status'] ?? '');
-
-        if (!array_key_exists($activeTab, $leadTabs)) {
-            $activeTab = 'all';
-        }
-
-        $tabStages = $leadTabs[$activeTab]['stages'] ?? [];
-
-        $leadsQuery = Lead::query()
-            ->visibleTo($user)
-            ->with(['contact', 'assignedTo'])
-            ->addSelect([
-                'next_follow_up_at' => FollowUp::query()
-                    ->select('due_at')
-                    ->whereColumn('lead_id', 'leads.id')
-                    ->where('status', 'pending')
-                    ->orderBy('due_at')
-                    ->limit(1),
-            ])
-            ->withMax('followUps as last_follow_up_at', 'due_at')
-            ->when($search !== '', function (Builder $query) use ($search): void {
-                $query->where(function (Builder $nested) use ($search): void {
-                    $nested
-                        ->whereHas('contact', function (Builder $contactQuery) use ($search): void {
-                            $contactQuery
-                                ->where('full_name', 'like', '%'.$search.'%')
-                                ->orWhere('phone', 'like', '%'.$search.'%')
-                                ->orWhere('normalized_phone', 'like', '%'.$search.'%')
-                                ->orWhere('email', 'like', '%'.$search.'%');
-                        })
-                        ->orWhere('source_platform', 'like', '%'.$search.'%')
-                        ->orWhere('stage', 'like', '%'.$search.'%');
-                });
-            })
-            ->when(!empty($tabStages), fn (Builder $query): Builder => $query->whereIn('stage', $tabStages))
-            ->when($sourceFilter !== '', fn (Builder $query): Builder => $query->where('source_platform', $sourceFilter))
-            ->when($statusFilter !== '', fn (Builder $query): Builder => $query->where('status', $statusFilter))
-            ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
-            ->orderByDesc('last_follow_up_at')
-            ->orderByDesc('last_activity_at');
-
-        $leads = $leadsQuery->get();
+        $leads = $this->decorateLeadListingQuery(
+            $this->applyLeadTabScope(
+                $this->buildLeadBaseQuery($user, $filters),
+                $filters['tab'],
+                $leadTabs
+            )
+        )->get();
 
         $tabCounts = [];
-        foreach ($leadTabs as $tabKey => $tabConfig) {
-            $tabCounts[$tabKey] = Lead::query()
-                ->visibleTo($user)
-                ->when(
-                    !empty($tabConfig['stages']),
-                    fn (Builder $query): Builder => $query->whereIn('stage', $tabConfig['stages'])
-                )
-                ->count();
+        foreach (array_keys($leadTabs) as $tabKey) {
+            $tabCounts[$tabKey] = $this->applyLeadTabScope(
+                $this->buildLeadBaseQuery($user, $filters),
+                $tabKey,
+                $leadTabs
+            )->count();
         }
 
         return view('clinic.leads', [
@@ -98,14 +53,78 @@ class ClinicController extends Controller
             'genderOptions' => $this->genderOptions(),
             'procedureOptions' => $this->procedureInterestOptions(),
             'leadTabs' => $leadTabs,
-            'activeTab' => $activeTab,
+            'activeTab' => $filters['tab'],
             'tabCounts' => $tabCounts,
-            'filters' => [
-                'search' => $search,
-                'tab' => $activeTab,
-                'source' => $sourceFilter,
-                'status' => $statusFilter,
-            ],
+            'filters' => $filters,
+        ]);
+    }
+
+    public function exportLeads(Request $request)
+    {
+        $leadTabs = $this->leadTabs();
+        $filters = $this->validatedLeadFilters($request);
+        $validated = $request->validate([
+            'scope' => ['required', 'string', Rule::in(['all', 'selected'])],
+            'format' => ['required', 'string', Rule::in(['excel', 'pdf'])],
+            'lead_ids' => ['nullable', 'string'],
+        ]);
+
+        $scope = (string) $validated['scope'];
+        $format = (string) $validated['format'];
+        $selectedLeadIds = $this->parseSelectedLeadIds((string) ($validated['lead_ids'] ?? ''));
+
+        if ($scope === 'selected' && empty($selectedLeadIds)) {
+            return back()->withErrors(['export' => 'Select at least one lead to export.']);
+        }
+
+        $leadsQuery = $this->decorateLeadListingQuery(
+            $this->applyLeadTabScope(
+                $this->buildLeadBaseQuery($request->user(), $filters),
+                $filters['tab'],
+                $leadTabs
+            )
+        );
+
+        if ($scope === 'selected') {
+            $leadsQuery->whereIn('leads.id', $selectedLeadIds);
+        }
+
+        $leads = $leadsQuery->get();
+
+        if ($leads->isEmpty()) {
+            return back()->withErrors(['export' => 'No leads matched the current export selection.']);
+        }
+
+        $exportBuilder = new LeadExportBuilder(
+            $this->stageOptions(),
+            $this->sourceOptions(),
+            $this->procedureInterestOptions()
+        );
+
+        $generatedAt = now('Asia/Karachi')->format('d M Y h:i A').' PKT';
+        $scopeLabel = $scope === 'selected' ? 'Selected Leads' : 'All Filtered Leads';
+        $context = [
+            'title' => 'CRM Leads Export',
+            'scope_label' => $scopeLabel,
+            'generated_at' => $generatedAt,
+            'filter_summary' => $this->leadFilterSummary($filters, $leadTabs),
+        ];
+        $timestamp = now('Asia/Karachi')->format('Ymd_His');
+
+        if ($format === 'excel') {
+            return response($exportBuilder->toExcel($leads, $context), 200, [
+                'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="clinic_leads_'.$scope.'_'.$timestamp.'.xls"',
+                'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        }
+
+        return response($exportBuilder->toPdf($leads, $context), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="clinic_leads_'.$scope.'_'.$timestamp.'.pdf"',
+            'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma' => 'public',
         ]);
     }
 
@@ -1438,6 +1457,154 @@ class ClinicController extends Controller
         }
 
         return Carbon::parse($resolvedValue, 'Asia/Karachi')->utc();
+    }
+
+    /**
+     * @return array{search: string, tab: string, source: string, status: string, date_from: string, date_to: string}
+     */
+    private function validatedLeadFilters(Request $request): array
+    {
+        $leadTabs = $this->leadTabs();
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'tab' => ['nullable', 'string', 'max:30'],
+            'source' => ['nullable', 'string', 'max:40'],
+            'status' => ['nullable', 'string', 'max:20'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $activeTab = (string) ($validated['tab'] ?? 'all');
+
+        if (!array_key_exists($activeTab, $leadTabs)) {
+            $activeTab = 'all';
+        }
+
+        return [
+            'search' => trim((string) ($validated['search'] ?? '')),
+            'tab' => $activeTab,
+            'source' => trim((string) ($validated['source'] ?? '')),
+            'status' => trim((string) ($validated['status'] ?? '')),
+            'date_from' => trim((string) ($validated['date_from'] ?? '')),
+            'date_to' => trim((string) ($validated['date_to'] ?? '')),
+        ];
+    }
+
+    private function buildLeadBaseQuery(?User $user, array $filters): Builder
+    {
+        $dateFrom = $this->parsePakistanDateBoundaryToUtc($filters['date_from'] ?? '', false);
+        $dateTo = $this->parsePakistanDateBoundaryToUtc($filters['date_to'] ?? '', true);
+        $search = $filters['search'] ?? '';
+        $sourceFilter = $filters['source'] ?? '';
+        $statusFilter = $filters['status'] ?? '';
+
+        return Lead::query()
+            ->visibleTo($user)
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $query->where(function (Builder $nested) use ($search): void {
+                    $nested
+                        ->whereHas('contact', function (Builder $contactQuery) use ($search): void {
+                            $contactQuery
+                                ->where('full_name', 'like', '%'.$search.'%')
+                                ->orWhere('phone', 'like', '%'.$search.'%')
+                                ->orWhere('normalized_phone', 'like', '%'.$search.'%')
+                                ->orWhere('email', 'like', '%'.$search.'%');
+                        })
+                        ->orWhere('source_platform', 'like', '%'.$search.'%')
+                        ->orWhere('stage', 'like', '%'.$search.'%');
+                });
+            })
+            ->when($sourceFilter !== '', fn (Builder $query): Builder => $query->where('source_platform', $sourceFilter))
+            ->when($statusFilter !== '', fn (Builder $query): Builder => $query->where('status', $statusFilter))
+            ->when($dateFrom !== null, fn (Builder $query): Builder => $query->where('created_at', '>=', $dateFrom))
+            ->when($dateTo !== null, fn (Builder $query): Builder => $query->where('created_at', '<=', $dateTo));
+    }
+
+    private function applyLeadTabScope(Builder $query, string $activeTab, array $leadTabs): Builder
+    {
+        $tabStages = $leadTabs[$activeTab]['stages'] ?? [];
+
+        if (empty($tabStages)) {
+            return $query;
+        }
+
+        return $query->whereIn('stage', $tabStages);
+    }
+
+    private function decorateLeadListingQuery(Builder $query): Builder
+    {
+        return $query
+            ->with(['contact', 'assignedTo'])
+            ->addSelect([
+                'next_follow_up_at' => FollowUp::query()
+                    ->select('due_at')
+                    ->whereColumn('lead_id', 'leads.id')
+                    ->where('status', 'pending')
+                    ->orderBy('due_at')
+                    ->limit(1),
+            ])
+            ->withMax('followUps as last_follow_up_at', 'due_at')
+            ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
+            ->orderByDesc('last_follow_up_at')
+            ->orderByDesc('last_activity_at');
+    }
+
+    private function parsePakistanDateBoundaryToUtc(string $value, bool $endOfDay): ?Carbon
+    {
+        $resolvedValue = trim($value);
+
+        if ($resolvedValue === '') {
+            return null;
+        }
+
+        $date = Carbon::parse($resolvedValue, 'Asia/Karachi');
+
+        return $endOfDay ? $date->endOfDay()->utc() : $date->startOfDay()->utc();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function parseSelectedLeadIds(string $value): array
+    {
+        return collect(explode(',', $value))
+            ->map(static fn (string $leadId): int => (int) trim($leadId))
+            ->filter(static fn (int $leadId): bool => $leadId > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function leadFilterSummary(array $filters, array $leadTabs): string
+    {
+        $parts = [
+            'Tab: '.($leadTabs[$filters['tab']]['label'] ?? 'All Leads'),
+        ];
+
+        if (($filters['search'] ?? '') !== '') {
+            $parts[] = 'Search: '.$filters['search'];
+        }
+
+        if (($filters['source'] ?? '') !== '') {
+            $parts[] = 'Source: '.($this->sourceOptions()[$filters['source']] ?? ucfirst(str_replace('_', ' ', (string) $filters['source'])));
+        }
+
+        if (($filters['status'] ?? '') !== '') {
+            $parts[] = 'Status: '.ucfirst((string) $filters['status']);
+        }
+
+        if (($filters['date_from'] ?? '') !== '' || ($filters['date_to'] ?? '') !== '') {
+            $from = ($filters['date_from'] ?? '') !== ''
+                ? Carbon::parse((string) $filters['date_from'], 'Asia/Karachi')->format('d M Y')
+                : 'Any';
+            $to = ($filters['date_to'] ?? '') !== ''
+                ? Carbon::parse((string) $filters['date_to'], 'Asia/Karachi')->format('d M Y')
+                : 'Any';
+
+            $parts[] = 'Created Between: '.$from.' and '.$to;
+        }
+
+        return implode(' | ', $parts);
     }
 
     private function authorizeLeadAccess(?User $user, Lead $lead): void
