@@ -63,7 +63,7 @@ class ClinicManualLeadTest extends TestCase
                 'procedure_interests' => ['laser_hair_removal'],
             ]);
 
-        $response->assertRedirect(route('clinicAppointments'));
+        $response->assertRedirect(route('clinicManualLead'));
         $response->assertSessionHas('status');
 
         $this->assertDatabaseHas('contacts', [

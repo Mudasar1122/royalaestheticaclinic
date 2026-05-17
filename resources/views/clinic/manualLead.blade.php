@@ -12,7 +12,7 @@
 
     $hasOtherSelected = in_array('other', $selectedProcedures, true);
 
-    $sourceOrder = ['manual', 'whatsapp', 'facebook', 'meta', 'google_business', 'instagram', 'tiktok'];
+    $sourceOrder = ['manual', 'whatsapp', 'facebook', 'meta', 'form_2', 'google_business', 'instagram', 'tiktok'];
     $orderedSources = collect($sourceOrder)
         ->filter(static fn (string $key): bool => isset($sources[$key]))
         ->mapWithKeys(static fn (string $key): array => [$key => $sources[$key]])
@@ -41,7 +41,8 @@
                     <h6 class="text-lg font-semibold mb-1">Create New Lead</h6>
                 </div>
                 <div class="card-body p-4">
-                    <form method="POST" action="{{ route('clinicManualLeadStore') }}" class="grid grid-cols-12 gap-4">
+                    <div data-form-status hidden class="mb-3 px-3 py-2 rounded-lg text-sm" role="alert"></div>
+                    <form method="POST" action="{{ route('clinicManualLeadStore') }}" class="grid grid-cols-12 gap-4" data-lead-form>
                         @csrf
                         <input type="hidden" name="stage" value="new">
 
@@ -343,27 +344,33 @@
                 : '#465fff';
             document.documentElement.style.setProperty('--crm-primary-color', primaryColor);
 
-            const leadForm = document.querySelector('form[action="{{ route('clinicManualLeadStore') }}"]');
+            const leadForm = document.querySelector('[data-lead-form]');
             const phoneHidden = document.querySelector('[data-phone-hidden]');
             const phoneLocal = document.querySelector('[data-phone-local]');
+            const statusBanner = document.querySelector('[data-form-status]');
+            let resetPickerUi = null;
+
+            const sanitizePhone = function (raw) {
+                return raw
+                    .replace(/\D+/g, '')
+                    .replace(/^0+/, '');
+            };
+
+            const syncPhone = function () {
+                if (!phoneHidden || !phoneLocal) {
+                    return;
+                }
+
+                const cleaned = sanitizePhone(phoneLocal.value);
+
+                if (phoneLocal.value !== cleaned) {
+                    phoneLocal.value = cleaned;
+                }
+
+                phoneHidden.value = cleaned !== '' ? '+92' + cleaned : '';
+            };
 
             if (leadForm && phoneHidden && phoneLocal) {
-                const sanitizePhone = function (raw) {
-                    return raw
-                        .replace(/\D+/g, '')
-                        .replace(/^0+/, '');
-                };
-
-                const syncPhone = function () {
-                    const cleaned = sanitizePhone(phoneLocal.value);
-
-                    if (phoneLocal.value !== cleaned) {
-                        phoneLocal.value = cleaned;
-                    }
-
-                    phoneHidden.value = cleaned !== '' ? '+92' + cleaned : '';
-                };
-
                 phoneLocal.addEventListener('keydown', function (event) {
                     if (
                         event.key === '0'
@@ -376,8 +383,162 @@
                 });
 
                 phoneLocal.addEventListener('input', syncPhone);
-                leadForm.addEventListener('submit', syncPhone);
                 syncPhone();
+            }
+
+            const showStatus = function (message, isError) {
+                if (!statusBanner) {
+                    return;
+                }
+
+                statusBanner.textContent = message;
+                statusBanner.className = 'mb-3 px-3 py-2 rounded-lg text-sm ' + (isError
+                    ? 'bg-danger-100 text-danger-700 border border-danger-200'
+                    : 'bg-success-100 text-success-700 border border-success-200');
+                statusBanner.hidden = false;
+
+                if (!isError) {
+                    window.clearTimeout(showStatus._timer);
+                    showStatus._timer = window.setTimeout(function () {
+                        statusBanner.hidden = true;
+                    }, 4000);
+                }
+            };
+
+            const hideStatus = function () {
+                if (statusBanner) {
+                    statusBanner.hidden = true;
+                }
+            };
+
+            const clearAjaxErrors = function () {
+                if (!leadForm) {
+                    return;
+                }
+
+                leadForm.querySelectorAll('[data-ajax-error]').forEach(function (node) {
+                    node.remove();
+                });
+                leadForm.querySelectorAll('.is-ajax-invalid').forEach(function (node) {
+                    node.classList.remove('is-ajax-invalid', 'border-danger-500');
+                });
+            };
+
+            const findFieldWrapper = function (name) {
+                if (!leadForm) {
+                    return null;
+                }
+
+                const base = name.replace(/\.\*$/, '').replace(/\.\d+$/, '');
+                const input = leadForm.querySelector('[name="' + base + '"], [name="' + base + '[]"]');
+
+                if (!input) {
+                    return null;
+                }
+
+                return {
+                    input: input,
+                    wrapper: input.closest('.col-span-12') || input.parentElement,
+                };
+            };
+
+            const renderErrors = function (errors) {
+                Object.keys(errors).forEach(function (fieldName) {
+                    const messages = errors[fieldName];
+                    const message = Array.isArray(messages) ? messages[0] : String(messages);
+                    const found = findFieldWrapper(fieldName);
+
+                    if (!found || !found.wrapper) {
+                        return;
+                    }
+
+                    const p = document.createElement('p');
+                    p.className = 'text-xs text-danger-600 mt-1 mb-0';
+                    p.setAttribute('data-ajax-error', '');
+                    p.textContent = message;
+                    found.wrapper.appendChild(p);
+
+                    if (found.input && found.input.classList) {
+                        found.input.classList.add('is-ajax-invalid', 'border-danger-500');
+                    }
+                });
+            };
+
+            const computePktDatetimeLocal = function () {
+                const now = new Date();
+                const pktMs = now.getTime() + now.getTimezoneOffset() * 60000 + 5 * 60 * 60000;
+                const pkt = new Date(pktMs);
+                const pad = function (n) { return n < 10 ? '0' + n : String(n); };
+                return pkt.getFullYear() + '-' + pad(pkt.getMonth() + 1) + '-' + pad(pkt.getDate())
+                    + 'T' + pad(pkt.getHours()) + ':' + pad(pkt.getMinutes());
+            };
+
+            const resetFormState = function () {
+                if (!leadForm) {
+                    return;
+                }
+
+                leadForm.reset();
+                syncPhone();
+
+                const followUpInput = leadForm.querySelector('input[name="follow_up_due_at"]');
+                if (followUpInput) {
+                    followUpInput.value = computePktDatetimeLocal();
+                }
+
+                clearAjaxErrors();
+            };
+
+            if (leadForm) {
+                leadForm.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+                    syncPhone();
+                    clearAjaxErrors();
+                    hideStatus();
+
+                    const submitButton = leadForm.querySelector('button[type="submit"]');
+                    if (submitButton) {
+                        submitButton.setAttribute('disabled', 'disabled');
+                    }
+
+                    try {
+                        const response = await fetch(leadForm.action, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: new FormData(leadForm),
+                            credentials: 'same-origin',
+                        });
+
+                        if (response.ok) {
+                            let data = {};
+                            try { data = await response.json(); } catch (e) {}
+                            showStatus(data.message || 'Lead created successfully.', false);
+                            resetFormState();
+
+                            if (typeof resetPickerUi === 'function') {
+                                resetPickerUi();
+                            }
+                        } else if (response.status === 422) {
+                            let data = {};
+                            try { data = await response.json(); } catch (e) {}
+                            renderErrors(data.errors || {});
+                            showStatus(data.message || 'Please review the highlighted fields.', true);
+                        } else if (response.status === 419) {
+                            showStatus('Session expired. Please reload the page.', true);
+                        } else {
+                            showStatus('Something went wrong. Please try again.', true);
+                        }
+                    } catch (err) {
+                        showStatus('Network error. Please try again.', true);
+                    } finally {
+                        if (submitButton) {
+                            submitButton.removeAttribute('disabled');
+                        }
+                    }
+                });
             }
 
             const picker = document.querySelector('[data-procedure-picker]');
@@ -495,6 +656,14 @@
 
             updateSummary();
             updateOtherVisibility();
+
+            resetPickerUi = function () {
+                searchInput.value = '';
+                filterItems('');
+                closePanel();
+                updateSummary();
+                updateOtherVisibility();
+            };
         });
     </script>
 @endsection

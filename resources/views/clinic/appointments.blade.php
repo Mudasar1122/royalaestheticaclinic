@@ -47,6 +47,12 @@
         </div>
     @endif
 
+    @if ($errors->has('export'))
+        <div class="alert alert-danger px-4 py-3 rounded-lg mb-4">
+            {{ $errors->first('export') }}
+        </div>
+    @endif
+
     <div class="followup-tab-wrap mb-6">
         @foreach ($tabs as $tabKey => $tabMeta)
             <a
@@ -63,14 +69,42 @@
     </div>
 
     <div class="card border-0 followup-grid-card">
-        <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700">
+        <div class="card-header border-b border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 followup-grid-header">
             <h6 class="mb-0 font-semibold text-lg">{{ $tabs[$activeTab]['label'] ?? "Today's Follow Up" }}</h6>
+
+            <form method="POST" action="{{ route('clinicAppointmentsExport') }}" class="followup-export-form" id="followup-export-form">
+                @csrf
+                <input type="hidden" name="tab" value="{{ $activeTab }}">
+                <input type="hidden" name="lead_ids" value="" id="followup-export-ids">
+                <input type="hidden" name="scope" value="all" id="followup-export-scope">
+                <input type="hidden" name="format" value="excel" id="followup-export-format">
+
+                <span class="followup-export-form__selected"><span id="followup-selected-count">0</span> follow-up(s) selected</span>
+
+                <div class="followup-export-form__actions">
+                    <button type="button" class="btn btn-outline-primary-600 px-3 py-2 rounded-lg text-xs" data-export-trigger data-export-scope="selected" data-export-format="excel" disabled>
+                        Selected Excel
+                    </button>
+                    <button type="button" class="btn btn-outline-primary-600 px-3 py-2 rounded-lg text-xs" data-export-trigger data-export-scope="selected" data-export-format="pdf" disabled>
+                        Selected PDF
+                    </button>
+                    <button type="button" class="btn btn-primary px-3 py-2 rounded-lg text-xs" data-export-trigger data-export-scope="all" data-export-format="excel" @disabled($leads->isEmpty())>
+                        All Excel
+                    </button>
+                    <button type="button" class="btn btn-primary px-3 py-2 rounded-lg text-xs" data-export-trigger data-export-scope="all" data-export-format="pdf" @disabled($leads->isEmpty())>
+                        All PDF
+                    </button>
+                </div>
+            </form>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive scroll-sm">
                 <table id="followup-grid-table" class="table bordered-table mb-0">
                     <thead>
                         <tr>
+                            <th class="followup-select-cell">
+                                <input type="checkbox" class="form-check-input followup-select-all" data-select-all aria-label="Select all visible follow-ups">
+                            </th>
                             <th>Name</th>
                             <th>Phone No</th>
                             <th>Procedure of Interest</th>
@@ -125,6 +159,14 @@
                                     : null;
                             @endphp
                             <tr>
+                                <td class="followup-select-cell">
+                                    <input
+                                        type="checkbox"
+                                        class="form-check-input followup-select-checkbox"
+                                        data-lead-id="{{ $lead->id }}"
+                                        aria-label="Select {{ $lead->contact?->full_name ?? 'lead' }} for export"
+                                    >
+                                </td>
                                 <td>
                                     <a
                                         href="{{ route('clinicLeadFollowUp', $lead) }}"
@@ -220,7 +262,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="text-center py-10 text-secondary-light">No follow-ups available in this queue.</td>
+                                <td colspan="9" class="text-center py-10 text-secondary-light">No follow-ups available in this queue.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -350,44 +392,86 @@
 
         #followup-grid-table th:nth-child(1),
         #followup-grid-table td:nth-child(1) {
-            width: 15%;
+            width: 38px;
+            text-align: center;
+            white-space: nowrap !important;
         }
 
         #followup-grid-table th:nth-child(2),
         #followup-grid-table td:nth-child(2) {
-            width: 12%;
+            width: 14%;
         }
 
         #followup-grid-table th:nth-child(3),
         #followup-grid-table td:nth-child(3) {
-            width: 21%;
-            text-align: left;
-            white-space: normal !important;
+            width: 11%;
         }
 
         #followup-grid-table th:nth-child(4),
         #followup-grid-table td:nth-child(4) {
-            width: 11%;
+            width: 20%;
+            text-align: left;
+            white-space: normal !important;
         }
 
         #followup-grid-table th:nth-child(5),
         #followup-grid-table td:nth-child(5) {
-            width: 11%;
+            width: 10%;
         }
 
         #followup-grid-table th:nth-child(6),
         #followup-grid-table td:nth-child(6) {
-            width: 12%;
+            width: 10%;
         }
 
         #followup-grid-table th:nth-child(7),
         #followup-grid-table td:nth-child(7) {
-            width: 8%;
+            width: 12%;
         }
 
         #followup-grid-table th:nth-child(8),
         #followup-grid-table td:nth-child(8) {
+            width: 8%;
+        }
+
+        #followup-grid-table th:nth-child(9),
+        #followup-grid-table td:nth-child(9) {
             width: 10%;
+            text-align: center;
+            white-space: nowrap !important;
+        }
+
+        .followup-grid-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            padding: 16px;
+        }
+
+        .followup-export-form {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 0;
+        }
+
+        .followup-export-form__selected {
+            font-size: 0.85rem;
+            color: #475467;
+            font-weight: 600;
+        }
+
+        .followup-export-form__actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .followup-select-cell {
+            width: 38px;
             text-align: center;
             white-space: nowrap !important;
         }
@@ -529,6 +613,55 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const table = document.getElementById('followup-grid-table');
+            const exportForm = document.getElementById('followup-export-form');
+            const exportIdsInput = document.getElementById('followup-export-ids');
+            const exportScopeInput = document.getElementById('followup-export-scope');
+            const exportFormatInput = document.getElementById('followup-export-format');
+            const selectedCount = document.getElementById('followup-selected-count');
+            const selectedExportButtons = Array.from(document.querySelectorAll('[data-export-trigger][data-export-scope="selected"]'));
+            const selectedLeadIds = new Set();
+
+            const syncFollowUpSelectionUi = function () {
+                const checkboxes = Array.from(document.querySelectorAll('.followup-select-checkbox'));
+                const allToggle = document.querySelector('[data-select-all]');
+                const normalizedIds = Array.from(selectedLeadIds)
+                    .filter((value) => value !== '')
+                    .sort((left, right) => Number(left) - Number(right));
+
+                checkboxes.forEach((checkbox) => {
+                    if (!(checkbox instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    const leadId = String(checkbox.dataset.leadId || '');
+                    checkbox.checked = leadId !== '' && selectedLeadIds.has(leadId);
+                });
+
+                if (selectedCount) {
+                    selectedCount.textContent = String(normalizedIds.length);
+                }
+
+                if (exportIdsInput instanceof HTMLInputElement) {
+                    exportIdsInput.value = normalizedIds.join(',');
+                }
+
+                selectedExportButtons.forEach((button) => {
+                    if (button instanceof HTMLButtonElement) {
+                        button.disabled = normalizedIds.length === 0;
+                    }
+                });
+
+                if (allToggle instanceof HTMLInputElement) {
+                    const visibleIds = checkboxes
+                        .map((checkbox) => String(checkbox.getAttribute('data-lead-id') || ''))
+                        .filter((value) => value !== '');
+                    const visibleSelectedCount = visibleIds.filter((leadId) => selectedLeadIds.has(leadId)).length;
+
+                    allToggle.disabled = visibleIds.length === 0;
+                    allToggle.checked = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+                    allToggle.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleIds.length;
+                }
+            };
 
             if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
                 const appointmentsTable = new simpleDatatables.DataTable('#followup-grid-table', {
@@ -537,7 +670,7 @@
                     perPage: 10,
                     perPageSelect: [10, 25, 50, 100],
                     columns: [
-                        { select: [6], sortable: false, searchable: false },
+                        { select: [0, 7, 8], sortable: false, searchable: false },
                     ],
                     labels: {
                         placeholder: 'Search...',
@@ -550,6 +683,17 @@
                 if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
                     window.royalUi.enableDatatableAllOption(appointmentsTable);
                 }
+            }
+
+            if (table) {
+                const tableObserver = new MutationObserver(function () {
+                    syncFollowUpSelectionUi();
+                });
+
+                tableObserver.observe(table, {
+                    childList: true,
+                    subtree: true,
+                });
             }
 
             const getDropdowns = function () {
@@ -593,6 +737,23 @@
                 const target = event.target;
 
                 if (!(target instanceof Element)) {
+                    return;
+                }
+
+                const exportButton = target.closest('[data-export-trigger]');
+
+                if (exportButton instanceof HTMLButtonElement) {
+                    event.preventDefault();
+
+                    if (!exportForm || !(exportScopeInput instanceof HTMLInputElement) || !(exportFormatInput instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    exportScopeInput.value = String(exportButton.getAttribute('data-export-scope') || 'all');
+                    exportFormatInput.value = String(exportButton.getAttribute('data-export-format') || 'excel');
+                    syncFollowUpSelectionUi();
+                    exportForm.submit();
+
                     return;
                 }
 
@@ -640,6 +801,56 @@
                     closeAll();
                 }
             });
+
+            document.addEventListener('change', function (event) {
+                const target = event.target;
+
+                if (!(target instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                if (target.matches('.followup-select-checkbox')) {
+                    const leadId = String(target.dataset.leadId || '');
+
+                    if (leadId === '') {
+                        return;
+                    }
+
+                    if (target.checked) {
+                        selectedLeadIds.add(leadId);
+                    } else {
+                        selectedLeadIds.delete(leadId);
+                    }
+
+                    syncFollowUpSelectionUi();
+
+                    return;
+                }
+
+                if (target.matches('[data-select-all]')) {
+                    document.querySelectorAll('.followup-select-checkbox').forEach((checkbox) => {
+                        if (!(checkbox instanceof HTMLInputElement)) {
+                            return;
+                        }
+
+                        const leadId = String(checkbox.dataset.leadId || '');
+
+                        if (leadId === '') {
+                            return;
+                        }
+
+                        if (target.checked) {
+                            selectedLeadIds.add(leadId);
+                        } else {
+                            selectedLeadIds.delete(leadId);
+                        }
+                    });
+
+                    syncFollowUpSelectionUi();
+                }
+            });
+
+            syncFollowUpSelectionUi();
 
             document.addEventListener('keydown', function (event) {
                 if (event.key === 'Escape') {

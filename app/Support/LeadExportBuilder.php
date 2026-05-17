@@ -31,7 +31,7 @@ class LeadExportBuilder
             ['style' => 'meta', 'cells' => ['Filters', $context['filter_summary'] ?? 'No filters applied']],
             ['style' => 'meta', 'cells' => ['Total Leads', (string) $rows->count()]],
             ['style' => null, 'cells' => []],
-            ['style' => 'header', 'cells' => ['Name', 'Phone', 'Source', 'Created At', 'Procedure of Interest', 'Stage', 'Status', 'Next Follow-up', 'Assigned User']],
+            ['style' => 'header', 'cells' => ['Name', 'Phone', 'Source', 'Created At', 'Procedure of Interest', 'Stage', 'Status', 'Next Follow-up', 'Assigned User', 'Follow-up History']],
         ];
 
         foreach ($rows as $row) {
@@ -47,6 +47,7 @@ class LeadExportBuilder
                     $row['status'],
                     $row['next_follow_up_at'],
                     $row['assigned_to'],
+                    $this->joinHistoryForExcel($row['follow_up_history']),
                 ],
             ];
         }
@@ -70,7 +71,9 @@ class LeadExportBuilder
             $xml[] = '<Row'.$styleAttribute.'>';
 
             foreach ($row['cells'] as $cell) {
-                $xml[] = '<Cell><Data ss:Type="String">'.$this->escapeXml((string) $cell).'</Data></Cell>';
+                $escaped = $this->escapeXml((string) $cell);
+                $escaped = str_replace(["\r\n", "\r", "\n"], '&#10;', $escaped);
+                $xml[] = '<Cell><Data ss:Type="String">'.$escaped.'</Data></Cell>';
             }
 
             $xml[] = '</Row>';
@@ -103,8 +106,14 @@ class LeadExportBuilder
                     [$row['next_follow_up_at'], 18],
                 ]),
                 $this->truncate('Procedures: '.$row['procedures'], 94).'  '.$this->truncate('User: '.$row['assigned_to'], 24),
-                str_repeat('-', 122),
             ];
+
+            $historyLines = $this->historyLinesForPdf($row['follow_up_history']);
+            foreach ($historyLines as $historyLine) {
+                $block[] = $historyLine;
+            }
+
+            $block[] = str_repeat('-', 122);
 
             if (count($pageLines) + count($block) > $maxLinesPerPage) {
                 $pages[] = $pageLines;
@@ -291,8 +300,101 @@ class LeadExportBuilder
                 'status' => ucfirst((string) $lead->status),
                 'next_follow_up_at' => $this->formatDateTime($lead->next_follow_up_at),
                 'assigned_to' => trim((string) ($lead->assignedTo?->name ?? '')) ?: 'Unassigned',
+                'follow_up_history' => $this->buildFollowUpHistory($lead),
             ];
         });
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildFollowUpHistory(Lead $lead): array
+    {
+        $followUps = $lead->relationLoaded('followUps')
+            ? $lead->followUps
+            : collect();
+
+        $ordered = $followUps
+            ->sortBy(static fn ($followUp) => optional($followUp->due_at)->getTimestamp() ?? PHP_INT_MAX)
+            ->values();
+
+        $points = [];
+        $index = 1;
+
+        foreach ($ordered as $followUp) {
+            $when = $this->formatDateTime($followUp->due_at ?? $followUp->created_at);
+            $statusLabel = ucfirst((string) ($followUp->status ?? 'pending'));
+            $methodLabel = $this->humanizeFollowUpTrigger((string) ($followUp->trigger_type ?? ''));
+            $stageLabel = (string) ($followUp->stage_snapshot ?? '');
+            $stageLabel = $stageLabel !== ''
+                ? ($this->stageOptions[$this->normalizeStage($stageLabel)] ?? ucfirst(str_replace('_', ' ', $stageLabel)))
+                : '';
+            $summary = $this->normalizeText((string) ($followUp->summary ?? ''));
+            $author = trim((string) ($followUp->createdBy?->name ?? ''));
+
+            $segments = array_filter([
+                $when,
+                $statusLabel,
+                $methodLabel,
+                $stageLabel !== '' ? 'Stage: '.$stageLabel : null,
+                $author !== '' ? 'By '.$author : null,
+                $summary !== '' ? $summary : null,
+            ], static fn ($value): bool => $value !== null && $value !== '');
+
+            $points[] = $index.'. '.implode(' — ', $segments);
+            $index++;
+        }
+
+        return $points;
+    }
+
+    private function humanizeFollowUpTrigger(string $value): string
+    {
+        if ($value === '') {
+            return 'Follow-up';
+        }
+
+        return match ($value) {
+            'manual_lead_create' => 'Lead Created',
+            'manual_follow_up_update' => 'Manual Follow-up',
+            'manual_note' => 'Manual Note',
+            default => ucfirst(str_replace('_', ' ', $value)),
+        };
+    }
+
+    /**
+     * @param array<int, string> $history
+     */
+    private function joinHistoryForExcel(array $history): string
+    {
+        if (empty($history)) {
+            return 'No follow-up history';
+        }
+
+        return implode("\n", $history);
+    }
+
+    /**
+     * @param array<int, string> $history
+     * @return array<int, string>
+     */
+    private function historyLinesForPdf(array $history): array
+    {
+        if (empty($history)) {
+            return ['Follow-up History: No follow-up history'];
+        }
+
+        $lines = ['Follow-up History:'];
+
+        foreach ($history as $point) {
+            $wrapped = $this->wrapText('  '.$point, 120);
+
+            foreach ($wrapped as $wrappedLine) {
+                $lines[] = $wrappedLine;
+            }
+        }
+
+        return $lines;
     }
 
     private function procedureLabelString(Lead $lead): string

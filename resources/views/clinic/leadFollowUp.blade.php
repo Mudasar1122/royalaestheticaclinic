@@ -263,7 +263,7 @@
                             <p class="text-danger-600 text-sm mt-1 mb-0">{{ $message }}</p>
                         @enderror
                     </div>
-                    <div class="js-open-stage-field">
+                    <div class="js-remarks-field">
                         <label class="form-label">Remarks</label>
                         <textarea
                             name="remarks"
@@ -1028,6 +1028,7 @@
             const nextDueAtInput = document.getElementById('followup-next-due-at');
             const remarksInput = document.getElementById('followup-remarks');
             const openStageFields = Array.from(document.querySelectorAll('.js-open-stage-field'));
+            const remarksFields = Array.from(document.querySelectorAll('.js-remarks-field'));
             const hasEditLeadErrors = @json($hasEditLeadErrors);
             const editFollowUpModalTarget = @json($editFollowUpModalTarget);
             const actionDropdowns = Array.from(document.querySelectorAll('[data-action-dropdown]'));
@@ -1038,6 +1039,9 @@
             let activeLeadModal = null;
             const stageKeepsFollowUpDetails = function (stageValue) {
                 return !['procedure_attempted', 'not_interested'].includes(stageValue);
+            };
+            const stageAllowsRemarks = function (stageValue) {
+                return stageValue !== 'procedure_attempted';
             };
 
             const closeAllDropdowns = function (except = null) {
@@ -1360,10 +1364,16 @@
                     return;
                 }
 
-                const shouldShowFollowUpDetails = stageKeepsFollowUpDetails(stageSelect.value);
+                const stageValue = stageSelect.value;
+                const shouldShowFollowUpDetails = stageKeepsFollowUpDetails(stageValue);
+                const shouldShowRemarks = stageAllowsRemarks(stageValue);
 
                 openStageFields.forEach((fieldWrap) => {
                     fieldWrap.classList.toggle('hidden', !shouldShowFollowUpDetails);
+                });
+
+                remarksFields.forEach((fieldWrap) => {
+                    fieldWrap.classList.toggle('hidden', !shouldShowRemarks);
                 });
 
                 if (nextDueAtInput) {
@@ -1372,8 +1382,8 @@
                 }
 
                 if (remarksInput) {
-                    remarksInput.required = shouldShowFollowUpDetails;
-                    remarksInput.disabled = !shouldShowFollowUpDetails;
+                    remarksInput.required = shouldShowRemarks;
+                    remarksInput.disabled = !shouldShowRemarks;
                 }
             };
 

@@ -13,6 +13,7 @@ use App\Services\Messaging\TwilioWhatsAppService;
 use App\Support\LeadExportBuilder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -89,6 +90,10 @@ class ClinicController extends Controller
             $leadsQuery->whereIn('leads.id', $selectedLeadIds);
         }
 
+        $leadsQuery->with(['followUps' => function ($query): void {
+            $query->with('createdBy')->orderBy('due_at')->orderBy('id');
+        }]);
+
         $leads = $leadsQuery->get();
 
         if ($leads->isEmpty()) {
@@ -153,7 +158,7 @@ class ClinicController extends Controller
         ]);
     }
 
-    public function storeManualLead(Request $request): RedirectResponse
+    public function storeManualLead(Request $request): RedirectResponse|JsonResponse
     {
         $genderKeys = array_keys($this->genderOptions());
         $sourceKeys = array_keys($this->sourceOptions());
@@ -181,6 +186,13 @@ class ClinicController extends Controller
         $normalizedPhone = $this->normalizePhone((string) $validated['phone']);
 
         if ($normalizedPhone === null) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => ['phone' => ['Enter a valid phone number.']],
+                ], 422);
+            }
+
             return back()
                 ->withErrors(['phone' => 'Enter a valid phone number.'])
                 ->withInput();
@@ -195,6 +207,13 @@ class ClinicController extends Controller
             $duplicateMessage = $existingLeadName !== ''
                 ? 'This phone number is already registered for '.$existingLeadName.'.'
                 : 'This phone number is already registered.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => ['phone' => [$duplicateMessage]],
+                ], 422);
+            }
 
             return back()
                 ->withErrors(['phone' => $duplicateMessage])
@@ -274,13 +293,18 @@ class ClinicController extends Controller
             ]);
         });
 
-        $redirectRoute = $request->user()?->hasModulePermission('lead_management', 'manage_followups')
-            ? 'clinicAppointments'
-            : 'clinicManualLead';
+        $successMessage = 'Lead created successfully. First follow-up was added in queue.';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => $successMessage,
+            ]);
+        }
 
         return redirect()
-            ->route($redirectRoute)
-            ->with('status', 'Lead created successfully. First follow-up was added in queue.');
+            ->route('clinicManualLead')
+            ->with('status', $successMessage);
     }
 
     public function updateLeadStage(
@@ -885,6 +909,113 @@ class ClinicController extends Controller
         ]);
     }
 
+    public function exportAppointments(Request $request)
+    {
+        $user = $request->user();
+        $validated = $request->validate([
+            'tab' => ['nullable', 'string', 'in:today,pending,upcoming'],
+            'scope' => ['required', 'string', Rule::in(['all', 'selected'])],
+            'format' => ['required', 'string', Rule::in(['excel', 'pdf'])],
+            'lead_ids' => ['nullable', 'string'],
+        ]);
+
+        $activeTab = (string) ($validated['tab'] ?? 'today');
+        $scope = (string) $validated['scope'];
+        $format = (string) $validated['format'];
+        $selectedLeadIds = $this->parseSelectedLeadIds((string) ($validated['lead_ids'] ?? ''));
+
+        if ($scope === 'selected' && empty($selectedLeadIds)) {
+            return back()->withErrors(['export' => 'Select at least one follow-up to export.']);
+        }
+
+        $pakistanNow = now('Asia/Karachi');
+        $now = $pakistanNow->copy()->utc();
+        $todayStart = $pakistanNow->copy()->startOfDay()->utc();
+        $todayEnd = $pakistanNow->copy()->endOfDay()->utc();
+
+        $tabScopedPendingQuery = FollowUp::query()
+            ->visibleTo($user)
+            ->where('status', 'pending')
+            ->when($activeTab === 'today', fn (Builder $query): Builder => $query->whereBetween('due_at', [$todayStart, $todayEnd]))
+            ->when($activeTab === 'pending', fn (Builder $query): Builder => $query->where('due_at', '<', $now))
+            ->when($activeTab === 'upcoming', fn (Builder $query): Builder => $query->where('due_at', '>', $todayEnd));
+
+        $leadIdsSubQuery = (clone $tabScopedPendingQuery)
+            ->select('lead_id')
+            ->distinct();
+
+        $leadsQuery = Lead::query()
+            ->with([
+                'contact',
+                'assignedTo',
+                'followUps' => function ($query): void {
+                    $query->with('createdBy')->orderBy('due_at')->orderBy('id');
+                },
+            ])
+            ->addSelect([
+                'next_follow_up_at' => FollowUp::query()
+                    ->select('due_at')
+                    ->whereColumn('lead_id', 'leads.id')
+                    ->where('status', 'pending')
+                    ->orderBy('due_at')
+                    ->limit(1),
+            ])
+            ->withMax('followUps as last_follow_up_at', 'due_at')
+            ->whereIn('id', $leadIdsSubQuery)
+            ->orderByDesc('last_follow_up_at')
+            ->orderByDesc('last_activity_at');
+
+        if ($scope === 'selected') {
+            $leadsQuery->whereIn('id', $selectedLeadIds);
+        }
+
+        $leads = $leadsQuery->get();
+
+        if ($leads->isEmpty()) {
+            return back()->withErrors(['export' => 'No follow-ups matched the current export selection.']);
+        }
+
+        $exportBuilder = new LeadExportBuilder(
+            $this->stageOptions(),
+            $this->sourceOptions(),
+            $this->procedureInterestOptions()
+        );
+
+        $tabLabels = [
+            'today' => "Today's Follow-ups",
+            'pending' => 'Pending Follow-ups',
+            'upcoming' => 'Upcoming Follow-ups',
+        ];
+
+        $generatedAt = now('Asia/Karachi')->format('d M Y h:i A').' PKT';
+        $scopeLabel = $scope === 'selected'
+            ? 'Selected Follow-ups'
+            : ($tabLabels[$activeTab] ?? 'All Follow-ups');
+        $context = [
+            'title' => 'CRM Follow-ups Export',
+            'scope_label' => $scopeLabel,
+            'generated_at' => $generatedAt,
+            'filter_summary' => 'Queue: '.($tabLabels[$activeTab] ?? ucfirst($activeTab)),
+        ];
+        $timestamp = now('Asia/Karachi')->format('Ymd_His');
+
+        if ($format === 'excel') {
+            return response($exportBuilder->toExcel($leads, $context), 200, [
+                'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="clinic_followups_'.$activeTab.'_'.$scope.'_'.$timestamp.'.xls"',
+                'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        }
+
+        return response($exportBuilder->toPdf($leads, $context), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="clinic_followups_'.$activeTab.'_'.$scope.'_'.$timestamp.'.pdf"',
+            'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma' => 'public',
+        ]);
+    }
+
     public function leadFollowUp(Lead $lead): View
     {
         $this->authorizeLeadAccess(request()->user(), $lead);
@@ -924,6 +1055,7 @@ class ClinicController extends Controller
         $nextStage = $this->normalizeLeadStage((string) $validated['stage']);
         $isClosedStage = $this->isClosedLeadStage($nextStage);
         $stageRequiresFollowUpDetails = $this->stageRequiresFollowUpDetails($nextStage);
+        $stageAllowsRemarks = $this->stageAllowsRemarks($nextStage);
 
         if (
             $nextStage === 'booked'
@@ -941,7 +1073,7 @@ class ClinicController extends Controller
                 'date',
             ],
             'remarks' => [
-                Rule::requiredIf($stageRequiresFollowUpDetails),
+                Rule::requiredIf($stageAllowsRemarks),
                 'nullable',
                 'string',
                 'max:1000',
@@ -1244,6 +1376,7 @@ class ClinicController extends Controller
             'tiktok' => 'TikTok',
             'google_business' => 'Google Business',
             'meta' => 'Lead Form',
+            'form_2' => 'Form 2',
             'manual' => 'Walk In Lead',
         ];
     }
@@ -1383,6 +1516,11 @@ class ClinicController extends Controller
     private function stageRequiresFollowUpDetails(string $stage): bool
     {
         return !in_array($stage, ['procedure_attempted', 'not_interested'], true);
+    }
+
+    private function stageAllowsRemarks(string $stage): bool
+    {
+        return $stage !== 'procedure_attempted';
     }
 
     /**

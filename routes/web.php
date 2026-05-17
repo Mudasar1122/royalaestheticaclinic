@@ -58,6 +58,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/whatsapp-demo', 'whatsappDemo')->name('clinicWhatsAppDemo')->middleware('module:lead_management,send_whatsapp');
         Route::post('/whatsapp-demo/send', 'whatsappDemoSend')->name('clinicWhatsAppDemoSend')->middleware('module:lead_management,send_whatsapp');
         Route::get('/appointments', 'appointments')->name('clinicAppointments')->middleware('module:lead_management,manage_followups');
+        Route::post('/appointments/export', 'exportAppointments')->name('clinicAppointmentsExport')->middleware('module:lead_management,manage_followups');
         Route::get('/leads/{lead}/follow-up', 'leadFollowUp')->name('clinicLeadFollowUp')->middleware('module:lead_management,manage_followups');
         Route::post('/leads/{lead}/follow-up', 'storeLeadFollowUp')->name('clinicLeadFollowUpStore')->middleware('module:lead_management,manage_followups');
         Route::patch('/follow-ups/{followUp}', 'updateFollowUp')->name('clinicFollowUpUpdate')->middleware('admin');
