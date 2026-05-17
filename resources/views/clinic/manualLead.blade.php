@@ -334,6 +334,21 @@
             border-color: var(--crm-primary-color, #465fff);
         }
 
+        .manual-lead-status {
+            font-weight: 600;
+        }
+
+        .manual-lead-status.is-success {
+            background: rgb(var(--ra-primary-rgb, 190 133 0) / 0.14);
+            color: #473314;
+            border-color: rgb(var(--ra-primary-rgb, 190 133 0) / 0.34);
+        }
+
+        .manual-lead-status.is-error {
+            background: #fde9e7;
+            color: #a83a30;
+            border-color: #f9c1bb;
+        }
     </style>
 
     <script>
@@ -392,9 +407,8 @@
                 }
 
                 statusBanner.textContent = message;
-                statusBanner.className = 'mb-3 px-3 py-2 rounded-lg text-sm ' + (isError
-                    ? 'bg-danger-100 text-danger-700 border border-danger-200'
-                    : 'bg-success-100 text-success-700 border border-success-200');
+                statusBanner.className = 'mb-3 px-3 py-2 rounded-lg text-sm border manual-lead-status'
+                    + (isError ? ' is-error' : ' is-success');
                 statusBanner.hidden = false;
 
                 if (!isError) {

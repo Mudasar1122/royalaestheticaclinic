@@ -34,4 +34,6 @@
     <link rel="stylesheet" href="{{ asset('assets/css/lib/audioplayer.css') }}">
     <!-- main css -->
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
+    <!-- laptop / 100% zoom tweaks (loaded last so it overrides style.css) -->
+    <link rel="stylesheet" href="{{ asset('assets/css/royal-tweaks.css') }}">
 </head>

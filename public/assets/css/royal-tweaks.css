@@ -1,0 +1,148 @@
+/* royal-tweaks.css
+ * Layout tweaks for 1366x768 / 1440x900 laptops at 100% zoom.
+ * Loaded after style.css so these rules win.
+ * Scoped to specific breakpoints so larger screens are untouched.
+ */
+
+/* ---- Laptop range: 992px - 1399px (the cramped zone) ---- */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    /* Slimmer sidebar buys back content width */
+    .sidebar {
+        width: 200px;
+    }
+
+    .dashboard-main {
+        margin-inline-start: 200px;
+    }
+
+    /* Tighter body padding so cards have more room */
+    .dashboard-main-body {
+        padding: 0.625rem;
+    }
+
+    /* Cards: less inner padding */
+    .card-body.p-4 {
+        padding: 0.875rem !important;
+    }
+
+    .card-body.p-5 {
+        padding: 1rem !important;
+    }
+
+    .card-header.p-4 {
+        padding: 0.75rem 1rem !important;
+    }
+
+    /* Listing tables: tighter cells, smaller font so columns fit */
+    .table.bordered-table > :not(caption) > * > * {
+        padding: 0.5rem 0.55rem;
+        font-size: 0.86rem;
+    }
+
+    .table.bordered-table thead th {
+        font-size: 0.78rem;
+        letter-spacing: 0;
+    }
+
+    /* Action buttons in tables: tighter */
+    .followup-action-btn {
+        min-width: 64px !important;
+        padding: 6px 8px !important;
+        font-size: 0.72rem !important;
+    }
+
+    /* Generic .btn: tighten the px-4 utility in compact contexts */
+    .btn.px-4 {
+        padding-inline: 0.85rem !important;
+    }
+
+    /* Tighten any pill / badge so they don't push columns wider */
+    .followup-stage-pill {
+        padding: 0.2rem 0.6rem !important;
+        font-size: 0.7rem !important;
+    }
+}
+
+/* ---- 1400 - 1649: shrink the very wide sidebar a touch ---- */
+@media (min-width: 1400px) and (max-width: 1649.98px) {
+    .sidebar {
+        width: 240px;
+    }
+
+    .dashboard-main {
+        margin-inline-start: 240px;
+    }
+}
+
+/* ---- Appointments export header: stack early on narrow screens ---- */
+@media (max-width: 1399.98px) {
+    .followup-grid-header {
+        padding: 12px 14px !important;
+        gap: 10px !important;
+    }
+
+    .followup-export-form {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px !important;
+    }
+
+    .followup-export-form__actions .btn {
+        padding: 6px 10px !important;
+        font-size: 0.72rem !important;
+    }
+}
+
+/* ---- Lead export/filter form: tighter at laptop sizes ---- */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    .lead-export-form,
+    .lead-filter-form {
+        gap: 8px !important;
+    }
+
+    .lead-export-form__actions .btn,
+    .lead-filter-form__actions .btn {
+        padding: 6px 12px !important;
+        font-size: 0.78rem !important;
+    }
+
+    .lead-export-form__meta,
+    .lead-export-form__note {
+        font-size: 0.78rem !important;
+    }
+}
+
+/* ---- Manual lead form: tighter grid gaps on laptops ---- */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    form.grid.grid-cols-12.gap-4 {
+        gap: 0.75rem !important;
+    }
+
+    .form-control,
+    .form-select {
+        padding: 0.5rem 0.7rem;
+        font-size: 0.9rem;
+    }
+
+    .form-label {
+        font-size: 0.82rem;
+        margin-bottom: 0.25rem;
+    }
+}
+
+/* ---- Horizontal-scroll safety net for any table that still overflows ---- */
+.table-responsive.scroll-sm {
+    overflow-x: auto;
+}
+
+/* ---- Lead follow-up tab grid: less padding so the wide history table breathes ---- */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    .lead-followup-tab-wrap {
+        gap: 6px;
+    }
+
+    .lead-followup-tab {
+        padding: 8px 12px !important;
+        font-size: 0.85rem;
+    }
+}
