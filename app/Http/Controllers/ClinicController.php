@@ -29,23 +29,19 @@ class ClinicController extends Controller
         $leadTabs = $this->leadTabs();
         $filters = $this->validatedLeadFilters($request);
         $user = $request->user();
+        $baseLeadQuery = $this->buildLeadBaseQuery($user, $filters);
 
         $leads = $this->decorateLeadListingQuery(
             $this->applyLeadTabScope(
-                $this->buildLeadBaseQuery($user, $filters),
+                clone $baseLeadQuery,
                 $filters['tab'],
                 $leadTabs
             )
-        )->get();
+        )
+            ->paginate($filters['per_page'])
+            ->withQueryString();
 
-        $tabCounts = [];
-        foreach (array_keys($leadTabs) as $tabKey) {
-            $tabCounts[$tabKey] = $this->applyLeadTabScope(
-                $this->buildLeadBaseQuery($user, $filters),
-                $tabKey,
-                $leadTabs
-            )->count();
-        }
+        $tabCounts = $this->buildLeadTabCounts($baseLeadQuery, $leadTabs);
 
         return view('clinic.leads', [
             'leads' => $leads,
@@ -1520,7 +1516,7 @@ class ClinicController extends Controller
 
     private function stageAllowsRemarks(string $stage): bool
     {
-        return $stage !== 'procedure_attempted';
+        return true;
     }
 
     /**
@@ -1598,7 +1594,7 @@ class ClinicController extends Controller
     }
 
     /**
-     * @return array{search: string, tab: string, source: string, status: string, date_from: string, date_to: string}
+     * @return array{search: string, tab: string, source: string, status: string, date_from: string, date_to: string, per_page: int}
      */
     private function validatedLeadFilters(Request $request): array
     {
@@ -1610,6 +1606,7 @@ class ClinicController extends Controller
             'status' => ['nullable', 'string', 'max:20'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'per_page' => ['nullable', 'integer', Rule::in([25, 50, 100])],
         ]);
 
         $activeTab = (string) ($validated['tab'] ?? 'all');
@@ -1625,6 +1622,7 @@ class ClinicController extends Controller
             'status' => trim((string) ($validated['status'] ?? '')),
             'date_from' => trim((string) ($validated['date_from'] ?? '')),
             'date_to' => trim((string) ($validated['date_to'] ?? '')),
+            'per_page' => (int) ($validated['per_page'] ?? 25),
         ];
     }
 
@@ -1672,7 +1670,10 @@ class ClinicController extends Controller
     private function decorateLeadListingQuery(Builder $query): Builder
     {
         return $query
-            ->with(['contact', 'assignedTo'])
+            ->with([
+                'contact:id,full_name,phone,email,gender',
+                'assignedTo:id,name',
+            ])
             ->addSelect([
                 'next_follow_up_at' => FollowUp::query()
                     ->select('due_at')
@@ -1685,6 +1686,43 @@ class ClinicController extends Controller
             ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
             ->orderByDesc('last_follow_up_at')
             ->orderByDesc('last_activity_at');
+    }
+
+    /**
+     * @param array<string, array{label: string, stages: array<int, string>}> $leadTabs
+     * @return array<string, int>
+     */
+    private function buildLeadTabCounts(Builder $baseLeadQuery, array $leadTabs): array
+    {
+        $normalizedStageCounts = (clone $baseLeadQuery)
+            ->selectRaw("
+                CASE
+                    WHEN stage = 'initial' THEN 'new'
+                    WHEN stage = 'proposal' THEN 'negotiation'
+                    WHEN stage = 'confirmed' THEN 'booked'
+                    ELSE stage
+                END as normalized_stage
+            ")
+            ->selectRaw('COUNT(*) as aggregate')
+            ->groupBy('normalized_stage')
+            ->pluck('aggregate', 'normalized_stage');
+
+        $tabCounts = [
+            'all' => (int) $normalizedStageCounts->sum(),
+        ];
+
+        foreach ($leadTabs as $tabKey => $tabConfig) {
+            if ($tabKey === 'all') {
+                continue;
+            }
+
+            $tabCounts[$tabKey] = collect($tabConfig['stages'])
+                ->map(fn (string $stage): string => $this->normalizeLeadStage($stage))
+                ->unique()
+                ->sum(fn (string $stage): int => (int) ($normalizedStageCounts[$stage] ?? 0));
+        }
+
+        return $tabCounts;
     }
 
     private function parsePakistanDateBoundaryToUtc(string $value, bool $endOfDay): ?Carbon

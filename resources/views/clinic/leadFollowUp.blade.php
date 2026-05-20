@@ -7,7 +7,8 @@
     $contact = $lead->contact;
     $currentUser = auth()->user();
     $canManageLeadAsAdmin = $currentUser?->isAdmin() ?? false;
-    $hasEditLeadErrors = $errors->hasAny([
+    $isLeadEditSubmission = old('procedure_interests_submitted') !== null;
+    $hasEditLeadErrors = $isLeadEditSubmission && $errors->hasAny([
         'full_name',
         'gender',
         'phone',
@@ -582,7 +583,7 @@
                                             @enderror
                                         </div>
 
-                                        <div class="followup-lead-field followup-lead-field--full" data-followup-edit-open-stage-field>
+                                        <div class="followup-lead-field followup-lead-field--full">
                                             <label class="followup-lead-field__label">Remarks</label>
                                             <textarea
                                                 name="remarks"
@@ -1041,7 +1042,7 @@
                 return !['procedure_attempted', 'not_interested'].includes(stageValue);
             };
             const stageAllowsRemarks = function (stageValue) {
-                return stageValue !== 'procedure_attempted';
+                return true;
             };
 
             const closeAllDropdowns = function (except = null) {
@@ -1174,9 +1175,6 @@
                 dueAtInput.required = shouldShowFollowUpDetails;
                 dueAtInput.disabled = !shouldShowFollowUpDetails;
 
-                if (remarksTextarea) {
-                    remarksTextarea.disabled = !shouldShowFollowUpDetails;
-                }
             };
 
             editLeadTriggers.forEach((trigger) => {

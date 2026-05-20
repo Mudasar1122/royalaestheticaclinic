@@ -334,6 +334,102 @@ class LeadFollowUpAdminActionTest extends TestCase
         $this->assertSame('closed', $lead->status);
     }
 
+    public function test_procedure_attempted_follow_up_from_follow_up_page_can_store_remarks(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['manage_followups'],
+            ],
+        ]);
+
+        [$contact, $lead] = $this->createLead($user);
+        $lead->forceFill([
+            'stage' => 'booked',
+            'status' => 'closed',
+        ])->save();
+
+        $existingFollowUp = FollowUp::query()->create([
+            'lead_id' => $lead->id,
+            'contact_id' => $contact->id,
+            'trigger_type' => 'manual_lead_create',
+            'stage_snapshot' => 'booked',
+            'status' => 'pending',
+            'due_at' => now()->addDay(),
+            'summary' => 'Initial queue item',
+            'assigned_to_user_id' => $user->id,
+            'created_by_user_id' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->post(route('clinicLeadFollowUpStore', $lead), [
+                'follow_up_method' => 'call',
+                'stage' => 'procedure_attempted',
+                'remarks' => 'Procedure was attempted and post-care instructions were shared.',
+            ]);
+
+        $response->assertRedirect(route('clinicLeadFollowUp', $lead));
+        $response->assertSessionHas('status', 'Follow-up added.');
+        $response->assertSessionMissing('auto_open_lead_edit_modal');
+
+        $existingFollowUp->refresh();
+        $lead->refresh();
+
+        $this->assertSame('completed', $existingFollowUp->status);
+        $this->assertSame('procedure_attempted', $existingFollowUp->stage_snapshot);
+
+        $newFollowUp = FollowUp::query()
+            ->where('lead_id', $lead->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($newFollowUp);
+        $this->assertSame('call', $newFollowUp->trigger_type);
+        $this->assertSame('procedure_attempted', $newFollowUp->stage_snapshot);
+        $this->assertSame('completed', $newFollowUp->status);
+        $this->assertSame('Procedure was attempted and post-care instructions were shared.', $newFollowUp->summary);
+        $this->assertNotNull($newFollowUp->completed_at);
+        $this->assertSame('procedure_attempted', $lead->stage);
+        $this->assertSame('closed', $lead->status);
+    }
+
+    public function test_procedure_attempted_follow_up_before_booking_does_not_open_edit_lead_modal(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+        ]);
+
+        [$contact, $lead] = $this->createLead();
+
+        FollowUp::query()->create([
+            'lead_id' => $lead->id,
+            'contact_id' => $contact->id,
+            'trigger_type' => 'manual_lead_create',
+            'stage_snapshot' => 'new',
+            'status' => 'pending',
+            'due_at' => now()->addDay(),
+            'summary' => 'Initial queue item',
+            'assigned_to_user_id' => $admin->id,
+            'created_by_user_id' => $admin->id,
+        ]);
+
+        $response = $this
+            ->from(route('clinicLeadFollowUp', $lead))
+            ->followingRedirects()
+            ->actingAs($admin)
+            ->post(route('clinicLeadFollowUpStore', $lead), [
+                'follow_up_method' => 'call',
+                'stage' => 'procedure_attempted',
+                'remarks' => 'Attempted to move to procedure attempted before booking.',
+            ]);
+
+        $response->assertOk();
+        $response->assertSee('Procedure Attempted can only be selected after the lead is booked.');
+        $response->assertSee('const hasEditLeadErrors = false;', false);
+    }
+
     public function test_non_admin_cannot_update_follow_up_from_follow_up_page(): void
     {
         $user = User::factory()->create([
