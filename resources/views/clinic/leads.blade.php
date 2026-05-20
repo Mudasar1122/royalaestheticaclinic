@@ -67,6 +67,7 @@
                         'status' => $filters['status'] !== '' ? $filters['status'] : null,
                         'date_from' => $filters['date_from'] !== '' ? $filters['date_from'] : null,
                         'date_to' => $filters['date_to'] !== '' ? $filters['date_to'] : null,
+                        'per_page' => ($filters['per_page'] ?? 25) !== 25 ? $filters['per_page'] : null,
                     ],
                     static fn ($value) => $value !== null && $value !== ''
                 );
@@ -145,6 +146,15 @@
                     >
                 </div>
 
+                <div class="lead-filter-form__field lead-filter-form__status">
+                    <label class="lead-filter-form__label" for="lead-per-page">Rows Per Page</label>
+                    <select id="lead-per-page" name="per_page" class="form-select rounded-lg">
+                        <option value="25" @selected(($filters['per_page'] ?? 25) === 25)>25</option>
+                        <option value="50" @selected(($filters['per_page'] ?? 25) === 50)>50</option>
+                        <option value="100" @selected(($filters['per_page'] ?? 25) === 100)>100</option>
+                    </select>
+                </div>
+
                 <div class="lead-filter-form__actions">
                     <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg text-sm">Apply Filter</button>
                     <a href="{{ route('clinicLeads', ['tab' => $activeTab]) }}" class="btn btn-outline-primary-600 px-4 py-2 rounded-lg text-sm">Reset</a>
@@ -159,13 +169,14 @@
                 <input type="hidden" name="status" value="{{ $filters['status'] }}">
                 <input type="hidden" name="date_from" value="{{ $filters['date_from'] }}">
                 <input type="hidden" name="date_to" value="{{ $filters['date_to'] }}">
+                <input type="hidden" name="per_page" value="{{ $filters['per_page'] ?? 25 }}">
                 <input type="hidden" name="lead_ids" value="" id="lead-export-ids">
                 <input type="hidden" name="scope" value="all" id="lead-export-scope">
                 <input type="hidden" name="format" value="excel" id="lead-export-format">
 
                 <div class="lead-export-form__meta">
                     <span class="lead-export-form__selected"><span id="lead-selected-count">0</span> lead(s) selected</span>
-                    <span class="lead-export-form__note">All export buttons use the active tab and current filters.</span>
+                    <span class="lead-export-form__note">Selections apply to the current page. All export buttons use the active tab and current filters.</span>
                 </div>
 
                 <div class="lead-export-form__actions">
@@ -196,10 +207,10 @@
                             <th>Name</th>
                             <th>Phone No</th>
                             <th>Source</th>
-                            <th>Created</th>
+                            <th>Created At</th>
                             <th>Procedure</th>
                             <th>Stage</th>
-                            <th>Next Follow-up</th>
+                            <th>Next Follow Date</th>
                             <th>User</th>
                             <th class="text-center">Action</th>
                         </tr>
@@ -244,7 +255,6 @@
                                     >
                                 </td>
                                 <td>
-                                    <span class="lead-sort-value">{{ trim((string) ($lead->contact?->full_name ?? 'Unnamed Lead')) }}</span>
                                     @if ($canManageFollowups)
                                         <a href="{{ route('clinicLeadFollowUp', $lead) }}" class="font-medium text-neutral-700 dark:text-neutral-100 hover:text-primary-600">
                                             {{ $lead->contact?->full_name ?? 'Unnamed Lead' }}
@@ -256,7 +266,6 @@
                                 <td>{{ $formatPhoneOnly($lead->contact) }}</td>
                                 <td>{{ $readableSource((string) $lead->source_platform) }}</td>
                                 <td>
-                                    <span class="lead-sort-value">{{ ($lead->created_at?->format('YmdHis') ?? '00000000000000').'-'.str_pad((string) $lead->id, 10, '0', STR_PAD_LEFT) }}</span>
                                     @if ($lead->created_at)
                                         {{ $lead->created_at->timezone('Asia/Karachi')->format('d M Y h:i A') }} PKT
                                     @else
@@ -280,7 +289,6 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <span class="lead-sort-value">{{ $nextFollowUpAt?->format('YmdHis') ?? '99999999999999' }}</span>
                                     @if ($nextFollowUpAt)
                                         <div class="followup-date-stack">
                                             <span>{{ $nextFollowUpAt->format('d M Y') }}</span>
@@ -349,160 +357,15 @@
             </div>
         </div>
 
+        @if ($leads->hasPages())
+            <div class="lead-pagination-wrap">
+                {{ $leads->onEachSide(1)->links() }}
+            </div>
+        @endif
+
     </div>
 
-    @foreach ($leads as $lead)
-        <div class="modal fade" id="whatsAppModal-{{ $lead->id }}" tabindex="-1" aria-hidden="true" style="display: none;">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <form action="{{ route('clinicLeadWhatsAppSend', $lead) }}" method="POST">
-                        @csrf
-                        <div class="modal-header">
-                            <h6 class="modal-title">Send WhatsApp Message</h6>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="mb-3">
-                                <label class="form-label">Recipient</label>
-                                <input
-                                    type="text"
-                                    class="form-control rounded-lg"
-                                    value="{{ $lead->contact?->phone ?? 'No phone on lead contact' }}"
-                                    disabled
-                                >
-                                <p class="text-xs text-secondary-light mt-1 mb-0">If a WhatsApp identity exists, it will be used automatically.</p>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Message</label>
-                                <textarea name="message" class="form-control rounded-lg" rows="4" maxlength="4096" required>{{ old('message') }}</textarea>
-                            </div>
-                            <p class="text-xs text-secondary-light mb-0">
-                                Message will be sent via Twilio WhatsApp.
-                            </p>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-cancel px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Send Message</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="modal fade" id="editLeadModal-{{ $lead->id }}" tabindex="-1" aria-hidden="true" style="display: none;">
-            <div class="modal-dialog modal-dialog-centered modal-lg">
-                <div class="modal-content">
-                    <form action="{{ route('clinicLeadUpdate', $lead) }}" method="POST">
-                        @csrf
-                        @method('PATCH')
-                        <div class="modal-header">
-                            <h6 class="modal-title">Edit Lead</h6>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="grid grid-cols-12 gap-4">
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Full Name</label>
-                                    <input type="text" name="full_name" value="{{ $lead->contact?->full_name }}" class="form-control rounded-lg" required>
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Gender</label>
-                                    <div class="gender-choice-group">
-                                        @foreach ($genderOptions as $genderKey => $genderLabel)
-                                            <label class="gender-choice-option">
-                                                <input
-                                                    type="radio"
-                                                    name="gender"
-                                                    value="{{ $genderKey }}"
-                                                    class="gender-choice-option__input"
-                                                    @checked(($lead->contact?->gender ?? 'female') === $genderKey)
-                                                    required
-                                                >
-                                                <span class="gender-choice-option__label">{{ $genderLabel }}</span>
-                                            </label>
-                                        @endforeach
-                                    </div>
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Phone</label>
-                                    <input type="text" name="phone" value="{{ $lead->contact?->phone }}" class="form-control rounded-lg">
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Email</label>
-                                    <input type="email" name="email" value="{{ $lead->contact?->email }}" class="form-control rounded-lg">
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Source</label>
-                                    <select name="source_platform" class="form-select rounded-lg" required>
-                                        @foreach ($sources as $sourceKey => $sourceLabel)
-                                            <option value="{{ $sourceKey }}" @selected($lead->source_platform === $sourceKey)>{{ $sourceLabel }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Stage</label>
-                                    <select name="stage" class="form-select rounded-lg" required>
-                                        @foreach ($stages as $stageKey => $stageText)
-                                            <option value="{{ $stageKey }}" @selected($normalizeStage((string) $lead->stage) === $stageKey)>{{ $stageText }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Status</label>
-                                    <select name="status" class="form-select rounded-lg" required>
-                                        <option value="open" @selected($lead->status === 'open')>Open</option>
-                                        <option value="closed" @selected($lead->status === 'closed')>Closed</option>
-                                    </select>
-                                    <p class="text-xs text-secondary-light mt-1 mb-0">Booked and Procedure Attempted stages will automatically set status to Closed.</p>
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Next Follow-up (Optional)</label>
-                                    <input type="datetime-local" name="follow_up_due_at" class="form-control rounded-lg">
-                                </div>
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="form-label">Follow-up Summary (Optional)</label>
-                                    <input type="text" name="follow_up_summary" class="form-control rounded-lg" maxlength="255">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-cancel px-4 py-2 rounded-lg" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg">Update Lead</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    @endforeach
-
     <style>
-        .gender-choice-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            min-height: 46px;
-            padding: 10px 12px;
-            border: 1px solid #d4d7dd;
-            border-radius: 10px;
-            background: #fff;
-        }
-
-        .gender-choice-option {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            margin: 0;
-            cursor: pointer;
-            color: #111827;
-            font-size: 0.95rem;
-        }
-
-        .gender-choice-option__input {
-            width: 16px;
-            height: 16px;
-            accent-color: rgb(var(--ra-primary-rgb, 190 133 0));
-        }
-
         .followup-tab-wrap {
             display: flex;
             flex-wrap: nowrap;
@@ -586,7 +449,7 @@
 
         .lead-filter-form {
             display: grid;
-            grid-template-columns: minmax(240px, 1.45fr) repeat(4, minmax(150px, 1fr));
+            grid-template-columns: minmax(240px, 1.45fr) repeat(5, minmax(140px, 1fr));
             gap: 12px;
             align-items: end;
         }
@@ -656,37 +519,6 @@
 
         .lead-export-form__actions .btn {
             min-width: 128px;
-        }
-
-        .followup-grid-card .datatable-wrapper .datatable-top {
-            padding: 12px 16px;
-            border-top: 1px solid #e5e7eb;
-            border-bottom: 1px solid #e5e7eb;
-            margin-bottom: 0;
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-        }
-
-        .followup-grid-card .datatable-wrapper .datatable-bottom {
-            padding: 12px 16px;
-            border-top: 1px solid #e5e7eb;
-            margin-top: 0;
-        }
-
-        .followup-grid-card .datatable-wrapper .datatable-top .datatable-search {
-            display: none;
-        }
-
-        .followup-grid-card .datatable-wrapper .datatable-search .datatable-input {
-            border: 1px solid #d4d7dd;
-            border-radius: 8px;
-            padding: 10px 12px;
-        }
-
-        .followup-grid-card .datatable-wrapper .datatable-search .datatable-input:focus {
-            border-color: rgb(var(--ra-primary-rgb, 190 133 0));
-            box-shadow: none;
         }
 
         #clinic-leads-table {
@@ -784,10 +616,6 @@
             width: 16px;
             height: 16px;
             accent-color: rgb(var(--ra-primary-rgb, 190 133 0));
-        }
-
-        .lead-sort-value {
-            display: none;
         }
 
         .followup-date-stack {
@@ -895,6 +723,12 @@
             color: #101828;
         }
 
+        .lead-pagination-wrap {
+            padding: 16px;
+            border-top: 1px solid #e5e7eb;
+            background: #fff;
+        }
+
         @media (max-width: 1400px) {
             .lead-filter-form {
                 grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -973,7 +807,6 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            const table = document.getElementById('clinic-leads-table');
             const exportForm = document.getElementById('lead-export-form');
             const exportIdsInput = document.getElementById('lead-export-ids');
             const exportScopeInput = document.getElementById('lead-export-scope');
@@ -1023,40 +856,6 @@
                     allToggle.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleIds.length;
                 }
             };
-
-            if (table && typeof simpleDatatables !== 'undefined' && typeof simpleDatatables.DataTable !== 'undefined') {
-                const leadsTable = new simpleDatatables.DataTable('#clinic-leads-table', {
-                    searchable: false,
-                    fixedHeight: false,
-                    perPage: 10,
-                    perPageSelect: [10, 25, 50, 100],
-                    columns: [
-                        { select: [0, 2, 3, 5, 6, 8, 9], sortable: false, searchable: false },
-                        { select: [1, 4, 7], sortable: true, searchable: false },
-                    ],
-                    labels: {
-                        placeholder: 'Search...',
-                        perPage: 'Rows per page',
-                        noRows: 'No leads found.',
-                        info: 'Showing {start} to {end} of {rows} entries',
-                    },
-                });
-
-                if (window.royalUi && typeof window.royalUi.enableDatatableAllOption === 'function') {
-                    window.royalUi.enableDatatableAllOption(leadsTable);
-                }
-            }
-
-            if (table) {
-                const tableObserver = new MutationObserver(function () {
-                    syncLeadSelectionUi();
-                });
-
-                tableObserver.observe(table, {
-                    childList: true,
-                    subtree: true,
-                });
-            }
 
             const getDropdowns = function () {
                 return Array.from(document.querySelectorAll('[data-action-dropdown]'));

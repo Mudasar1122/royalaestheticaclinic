@@ -102,6 +102,52 @@ class NavbarLeadSearchTest extends TestCase
         $response->assertDontSee($otherContact->full_name);
     }
 
+    public function test_leads_page_uses_server_side_pagination(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'staff',
+            'module_access' => ['lead_management'],
+            'module_permissions' => [
+                'lead_management' => ['view_leads', 'manage_followups'],
+            ],
+        ]);
+
+        for ($index = 1; $index <= 30; $index++) {
+            [, $lead] = $this->createLead(
+                sprintf('Lead %02d', $index),
+                '+92345000'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+                $user
+            );
+
+            $lead->forceFill([
+                'last_activity_at' => now()->subMinutes(31 - $index),
+            ])->save();
+        }
+
+        $firstPageResponse = $this
+            ->actingAs($user)
+            ->get(route('clinicLeads', [
+                'tab' => 'all',
+                'per_page' => 25,
+            ]));
+
+        $firstPageResponse->assertOk();
+        $firstPageResponse->assertSee('Lead 30');
+        $firstPageResponse->assertDontSee('Lead 01');
+
+        $secondPageResponse = $this
+            ->actingAs($user)
+            ->get(route('clinicLeads', [
+                'tab' => 'all',
+                'per_page' => 25,
+                'page' => 2,
+            ]));
+
+        $secondPageResponse->assertOk();
+        $secondPageResponse->assertSee('Lead 01');
+        $secondPageResponse->assertDontSee('Lead 30');
+    }
+
     /**
      * @return array{0: Contact, 1: Lead}
      */
