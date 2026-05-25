@@ -31,9 +31,12 @@
 
     $phoneLocalDefault = ltrim($oldPhoneDigits, '0');
     $selectedGender = (string) old('gender', 'female');
+    $selectedFollowUpMethod = (string) old('follow_up_method', 'walkin');
 @endphp
 
 @section('content')
+    <div data-form-status-region></div>
+
     <div class="grid grid-cols-12 gap-6">
         <div class="col-span-12">
             <div class="card border-0">
@@ -41,7 +44,6 @@
                     <h6 class="text-lg font-semibold mb-1">Create New Lead</h6>
                 </div>
                 <div class="card-body p-4">
-                    <div data-form-status hidden class="mb-3 px-3 py-2 rounded-lg text-sm" role="alert"></div>
                     <form method="POST" action="{{ route('clinicManualLeadStore') }}" class="grid grid-cols-12 gap-4" data-lead-form>
                         @csrf
                         <input type="hidden" name="stage" value="new">
@@ -131,6 +133,19 @@
                                 @endforeach
                             </select>
                             @error('source_platform')
+                                <p class="text-xs text-danger-600 mt-1 mb-0">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div class="col-span-12 md:col-span-6">
+                            <label class="form-label @error('follow_up_method') text-danger-600 @enderror">Follow-up Method <span class="text-danger-600">*</span></label>
+                            <select name="follow_up_method" class="form-select rounded-lg @error('follow_up_method') border-danger-500 @enderror" required>
+                                <option value="">Select method</option>
+                                @foreach ($followUpMethods as $methodKey => $methodLabel)
+                                    <option value="{{ $methodKey }}" @selected($selectedFollowUpMethod === $methodKey)>{{ $methodLabel }}</option>
+                                @endforeach
+                            </select>
+                            @error('follow_up_method')
                                 <p class="text-xs text-danger-600 mt-1 mb-0">{{ $message }}</p>
                             @enderror
                         </div>
@@ -335,19 +350,85 @@
         }
 
         .manual-lead-status {
-            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 18px;
+            padding: 15px 18px;
+            border: 1px solid #f7c6c0;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #fff7f5 0%, #feeceb 100%);
+            box-shadow: 0 18px 40px rgb(168 58 48 / 0.12);
         }
 
-        .manual-lead-status.is-success {
-            background: rgb(var(--ra-primary-rgb, 190 133 0) / 0.14);
-            color: #473314;
-            border-color: rgb(var(--ra-primary-rgb, 190 133 0) / 0.34);
+        .manual-lead-status__icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 23px;
+            color: #d44e40;
+            background: rgb(212 78 64 / 0.12);
+            box-shadow: inset 0 0 0 1px rgb(212 78 64 / 0.12);
         }
 
-        .manual-lead-status.is-error {
-            background: #fde9e7;
+        .manual-lead-status__message {
+            flex: 1 1 auto;
+            min-width: 0;
+            margin: 0;
             color: #a83a30;
-            border-color: #f9c1bb;
+            font-size: 0.98rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .manual-lead-status__close {
+            width: 34px;
+            height: 34px;
+            border: 0;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: rgb(255 255 255 / 0.72);
+            color: #b14639;
+            font-size: 18px;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .manual-lead-status__close:hover {
+            background: rgb(212 78 64 / 0.12);
+            color: #d44e40;
+        }
+
+        :is(.dark .manual-lead-status) {
+            border-color: rgb(212 78 64 / 0.22);
+            background: linear-gradient(135deg, rgb(56 27 24 / 0.94) 0%, rgb(43 22 20 / 0.98) 100%);
+            box-shadow: 0 18px 40px rgb(0 0 0 / 0.3);
+        }
+
+        :is(.dark .manual-lead-status__icon) {
+            color: #f18d82;
+            background: rgb(241 141 130 / 0.12);
+            box-shadow: inset 0 0 0 1px rgb(241 141 130 / 0.12);
+        }
+
+        :is(.dark .manual-lead-status__message) {
+            color: #f8d2cc;
+        }
+
+        :is(.dark .manual-lead-status__close) {
+            background: rgb(255 255 255 / 0.08);
+            color: #f3a49a;
+        }
+
+        :is(.dark .manual-lead-status__close:hover) {
+            background: rgb(241 141 130 / 0.12);
+            color: #f8c0b9;
         }
     </style>
 
@@ -362,7 +443,8 @@
             const leadForm = document.querySelector('[data-lead-form]');
             const phoneHidden = document.querySelector('[data-phone-hidden]');
             const phoneLocal = document.querySelector('[data-phone-local]');
-            const statusBanner = document.querySelector('[data-form-status]');
+            const statusRegion = document.querySelector('[data-form-status-region]');
+            const successFlashDuration = 10000;
             let resetPickerUi = null;
 
             const sanitizePhone = function (raw) {
@@ -401,27 +483,83 @@
                 syncPhone();
             }
 
+            const buildSuccessStatus = function (message) {
+                const flash = document.createElement('div');
+                flash.className = 'royal-status-flash';
+                flash.setAttribute('data-royal-flash', '');
+                flash.setAttribute('role', 'status');
+                flash.setAttribute('aria-live', 'polite');
+                flash.setAttribute('data-flash-duration', String(successFlashDuration));
+                flash.innerHTML = ''
+                    + '<div class="royal-status-flash__icon"><iconify-icon icon="heroicons:check-badge-solid"></iconify-icon></div>'
+                    + '<p class="royal-status-flash__message"></p>'
+                    + '<button type="button" class="royal-status-flash__close" data-royal-flash-close aria-label="Dismiss message">'
+                    + '<iconify-icon icon="heroicons:x-mark"></iconify-icon>'
+                    + '</button>'
+                    + '<span class="royal-status-flash__progress" aria-hidden="true"></span>';
+
+                const messageNode = flash.querySelector('.royal-status-flash__message');
+                const progressNode = flash.querySelector('.royal-status-flash__progress');
+
+                if (messageNode) {
+                    messageNode.textContent = message;
+                }
+
+                if (progressNode instanceof HTMLElement) {
+                    progressNode.style.animationDuration = (successFlashDuration / 1000) + 's';
+                }
+
+                return flash;
+            };
+
+            const buildErrorStatus = function (message) {
+                const flash = document.createElement('div');
+                flash.className = 'manual-lead-status';
+                flash.setAttribute('role', 'alert');
+                flash.innerHTML = ''
+                    + '<div class="manual-lead-status__icon"><iconify-icon icon="heroicons:exclamation-triangle-solid"></iconify-icon></div>'
+                    + '<p class="manual-lead-status__message"></p>'
+                    + '<button type="button" class="manual-lead-status__close" aria-label="Dismiss message">'
+                    + '<iconify-icon icon="heroicons:x-mark"></iconify-icon>'
+                    + '</button>';
+
+                const messageNode = flash.querySelector('.manual-lead-status__message');
+                const closeButton = flash.querySelector('.manual-lead-status__close');
+
+                if (messageNode) {
+                    messageNode.textContent = message;
+                }
+
+                if (closeButton instanceof HTMLButtonElement) {
+                    closeButton.addEventListener('click', function () {
+                        flash.remove();
+                    });
+                }
+
+                return flash;
+            };
+
             const showStatus = function (message, isError) {
-                if (!statusBanner) {
+                if (!statusRegion) {
                     return;
                 }
 
-                statusBanner.textContent = message;
-                statusBanner.className = 'mb-3 px-3 py-2 rounded-lg text-sm border manual-lead-status'
-                    + (isError ? ' is-error' : ' is-success');
-                statusBanner.hidden = false;
+                hideStatus();
 
-                if (!isError) {
-                    window.clearTimeout(showStatus._timer);
-                    showStatus._timer = window.setTimeout(function () {
-                        statusBanner.hidden = true;
-                    }, 4000);
+                const statusNode = isError
+                    ? buildErrorStatus(message)
+                    : buildSuccessStatus(message);
+
+                statusRegion.appendChild(statusNode);
+
+                if (!isError && window.royalUi && typeof window.royalUi.initStatusFlashes === 'function') {
+                    window.royalUi.initStatusFlashes(statusRegion);
                 }
             };
 
             const hideStatus = function () {
-                if (statusBanner) {
-                    statusBanner.hidden = true;
+                if (statusRegion) {
+                    statusRegion.innerHTML = '';
                 }
             };
 

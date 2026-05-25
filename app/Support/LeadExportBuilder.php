@@ -355,6 +355,10 @@ class LeadExportBuilder
         }
 
         return match ($value) {
+            'call' => 'Call',
+            'whatsapp' => 'WhatsApp',
+            'sms' => 'SMS',
+            'walkin' => 'Walk In',
             'manual_lead_create' => 'Lead Created',
             'manual_follow_up_update' => 'Manual Follow-up',
             'manual_note' => 'Manual Note',

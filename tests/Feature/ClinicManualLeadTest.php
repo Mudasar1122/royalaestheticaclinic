@@ -34,6 +34,10 @@ class ClinicManualLeadTest extends TestCase
         $response->assertSee('Female', false);
         $response->assertSee('Male', false);
         $response->assertSee('value="meta"', false);
+        $response->assertSee('name="follow_up_method"', false);
+        $response->assertSee('Follow-up Method');
+        $response->assertSee('WhatsApp');
+        $response->assertSee('Walk In');
         $response->assertSee('Lead Form');
         $response->assertSee('btn-cancel', false);
     }
@@ -57,6 +61,7 @@ class ClinicManualLeadTest extends TestCase
                 'phone' => '+923001234567',
                 'email' => 'ayesha@example.com',
                 'source_platform' => 'meta',
+                'follow_up_method' => 'call',
                 'stage' => 'new',
                 'remarks' => 'Interested in laser hair removal.',
                 'follow_up_due_at' => $expectedFollowUpDueAt,
@@ -88,6 +93,8 @@ class ClinicManualLeadTest extends TestCase
         ]);
         $followUp = \App\Models\FollowUp::query()->where('contact_id', $contact?->id)->first();
         $this->assertNotNull($followUp);
+        $this->assertSame('call', $followUp?->trigger_type);
+        $this->assertSame('call', data_get($followUp?->metadata, 'method'));
         $this->assertSame(
             str_replace('T', ' ', $expectedFollowUpDueAt),
             $followUp?->due_at?->timezone('Asia/Karachi')->format('Y-m-d H:i')
@@ -135,6 +142,7 @@ class ClinicManualLeadTest extends TestCase
                 'phone' => '+923001234567',
                 'email' => 'another@example.com',
                 'source_platform' => 'manual',
+                'follow_up_method' => 'walkin',
                 'stage' => 'new',
                 'remarks' => 'Duplicate test',
                 'follow_up_due_at' => now('Asia/Karachi')->addDay()->format('Y-m-d\TH:i'),

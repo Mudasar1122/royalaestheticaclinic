@@ -150,6 +150,7 @@ class ClinicController extends Controller
             'sources' => $this->sourceOptions(),
             'stages' => $this->stageOptions(),
             'genderOptions' => $this->genderOptions(),
+            'followUpMethods' => $this->followUpMethodOptions(),
             'procedureOptions' => $this->procedureInterestOptions(),
         ]);
     }
@@ -158,6 +159,7 @@ class ClinicController extends Controller
     {
         $genderKeys = array_keys($this->genderOptions());
         $sourceKeys = array_keys($this->sourceOptions());
+        $methodKeys = array_keys($this->followUpMethodOptions());
         $procedureKeys = array_keys($this->procedureInterestOptions());
 
         $validated = $request->validate([
@@ -166,6 +168,7 @@ class ClinicController extends Controller
             'email' => ['nullable', 'email', 'max:120'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^\+92[1-9][0-9]{7,12}$/'],
             'source_platform' => ['required', 'string', Rule::in($sourceKeys)],
+            'follow_up_method' => ['required', 'string', Rule::in($methodKeys)],
             'stage' => ['required', 'string', 'in:new'],
             'remarks' => ['nullable', 'string', 'max:2000'],
             'follow_up_due_at' => ['required', 'date'],
@@ -274,12 +277,14 @@ class ClinicController extends Controller
             FollowUp::create([
                 'lead_id' => $lead->id,
                 'contact_id' => $contact->id,
-                'trigger_type' => 'manual_lead_create',
+                'trigger_type' => $validated['follow_up_method'],
                 'stage_snapshot' => $normalizedStage,
                 'status' => 'pending',
                 'due_at' => $followUpDueAt,
                 'summary' => $remarks !== '' ? $remarks : 'Lead entered from create new lead form',
                 'metadata' => [
+                    'source' => 'manual_form',
+                    'method' => $validated['follow_up_method'],
                     'platform' => $validated['source_platform'],
                     'procedures_of_interest' => $selectedProcedures,
                     'procedure_other' => $procedureOther !== '' ? $procedureOther : null,
